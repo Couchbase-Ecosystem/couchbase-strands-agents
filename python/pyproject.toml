@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strands-couchbase-memory"
+dynamic = ["version"]
+description = "Couchbase Vector Search MemoryStore extension for Strands Agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Couchbase Examples", email = "devadvocacy@couchbase.com"}]
+keywords = ["strands", "agents", "couchbase", "vector-search", "memory-store"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "couchbase>=4.4.0,<5.0.0",
+  "strands-agents>=1.0.0",
+  "typing-extensions>=4.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/couchbase-examples/couchbase-strands-agents"
+Documentation = "https://github.com/couchbase-examples/couchbase-strands-agents#readme"
+Repository = "https://github.com/couchbase-examples/couchbase-strands-agents"
+Issues = "https://github.com/couchbase-examples/couchbase-strands-agents/issues"
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2.0,<2.0.0",
+  "hatch>=1.14.0,<2.0.0",
+  "mypy>=1.15.0,<2.0.0",
+  "pytest>=8.0.0,<9.0.0",
+  "pytest-asyncio>=0.25.0,<1.0.0",
+  "ruff>=0.11.0,<1.0.0",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+root = ".."
+tag_regex = "^python-v(?P<version>.+)$"
+relative_to = "pyproject.toml"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/strands_couchbase_memory"]
+
+[tool.hatch.envs.default]
+dependencies = [
+  "build>=1.2.0,<2.0.0",
+  "mypy>=1.15.0,<2.0.0",
+  "pytest>=8.0.0,<9.0.0",
+  "pytest-asyncio>=0.25.0,<1.0.0",
+  "ruff>=0.11.0,<1.0.0",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args}"
+lint = "ruff check src tests examples"
+format = "ruff format src tests examples"
+typecheck = "mypy src"
+build = "python -m build"
+prepare = ["format", "lint", "typecheck", "test", "build"]
+
+[tool.ruff]
+line-length = 120
+include = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = ["integration: requires a live Couchbase cluster"]
