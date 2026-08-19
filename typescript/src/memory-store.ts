@@ -83,9 +83,20 @@ export interface CouchbaseMemoryStoreConfig extends MemoryStoreConfig {
 }
 
 export class CouchbaseSdkBackend implements CouchbaseBackend {
-  private readonly cluster: couchbase.Cluster
-  private readonly scope: couchbase.Scope
-  private readonly collection: couchbase.Collection
+  private readonly config: {
+    connectionString: string
+    username: string
+    password: string
+    bucketName: string
+    scopeName: string
+    collectionName: string
+    cluster?: couchbase.Cluster | undefined
+    collection?: couchbase.Collection | undefined
+  }
+  private cluster: couchbase.Cluster | undefined
+  private scope: couchbase.Scope | undefined
+  private collection: couchbase.Collection | undefined
+  private connectPromise: Promise<couchbase.Cluster> | undefined
   private readonly ownsCluster: boolean
 
   constructor(config: {
@@ -98,24 +109,20 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
     cluster?: couchbase.Cluster | undefined
     collection?: couchbase.Collection | undefined
   }) {
+    this.config = config
     this.ownsCluster = config.cluster === undefined
-    this.cluster =
-      config.cluster ??
-      new couchbase.Cluster(config.connectionString, {
-        username: config.username,
-        password: config.password,
-      })
-    const bucket = this.cluster.bucket(config.bucketName)
-    this.scope = config.scopeName === DEFAULT_SCOPE ? bucket.defaultScope() : bucket.scope(config.scopeName)
-    this.collection =
-      config.collection ??
-      (config.collectionName === DEFAULT_COLLECTION
-        ? bucket.defaultCollection()
-        : this.scope.collection(config.collectionName))
+    if (config.cluster !== undefined) {
+      this.cluster = config.cluster
+      this.resolveBucketHandles(config.cluster)
+    }
+    if (config.collection !== undefined) {
+      this.collection = config.collection
+    }
   }
 
   async upsert(key: string, document: MemoryDocument): Promise<void> {
-    await this.collection.upsert(key, document)
+    const collection = await this.getCollection()
+    await collection.upsert(key, document)
   }
 
   async vectorSearch(input: {
@@ -129,12 +136,13 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
     contentField: string
     metadataField: string
   }): Promise<SearchHit[]> {
+    const scope = await this.getScope()
     const prefilter = couchbase.SearchQuery.match(input.namespace).field(input.namespaceField)
     const vectorQuery = couchbase.VectorQuery.create(input.vectorField, input.queryVector)
       .numCandidates(input.numCandidates ?? Math.max(input.limit * 3, input.limit))
       .prefilter(prefilter)
     const request = couchbase.SearchRequest.create(couchbase.VectorSearch.fromVectorQuery(vectorQuery))
-    const result = await this.scope.search(input.searchIndexName, request, {
+    const result = await scope.search(input.searchIndexName, request, {
       limit: input.limit,
       fields: [input.contentField, input.metadataField, input.namespaceField],
     })
@@ -154,9 +162,45 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
   }
 
   async close(): Promise<void> {
-    if (this.ownsCluster) {
-      await this.cluster.close()
+    const cluster = this.cluster ?? (this.connectPromise ? await this.connectPromise : undefined)
+    if (this.ownsCluster && cluster !== undefined) {
+      await cluster.close()
     }
+  }
+
+  private async getScope(): Promise<couchbase.Scope> {
+    if (this.scope !== undefined) return this.scope
+    const cluster = await this.getCluster()
+    this.resolveBucketHandles(cluster)
+    if (this.scope === undefined) throw new Error('Failed to resolve Couchbase scope')
+    return this.scope
+  }
+
+  private async getCollection(): Promise<couchbase.Collection> {
+    if (this.collection !== undefined) return this.collection
+    await this.getScope()
+    if (this.collection === undefined) throw new Error('Failed to resolve Couchbase collection')
+    return this.collection
+  }
+
+  private async getCluster(): Promise<couchbase.Cluster> {
+    if (this.cluster !== undefined) return this.cluster
+    this.connectPromise ??= couchbase.connect(this.config.connectionString, {
+      username: this.config.username,
+      password: this.config.password,
+    })
+    this.cluster = await this.connectPromise
+    return this.cluster
+  }
+
+  private resolveBucketHandles(cluster: couchbase.Cluster): void {
+    const bucket = cluster.bucket(this.config.bucketName)
+    this.scope = this.config.scopeName === DEFAULT_SCOPE ? bucket.defaultScope() : bucket.scope(this.config.scopeName)
+    this.collection =
+      this.config.collection ??
+      (this.config.collectionName === DEFAULT_COLLECTION
+        ? bucket.defaultCollection()
+        : this.scope.collection(this.config.collectionName))
   }
 }
 
