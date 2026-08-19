@@ -9,7 +9,7 @@
 - Docs/examples: root README for end users, language-specific READMEs, `docs/`, `python/examples`, and `typescript/examples`.
 - Release/package locations: `python/pyproject.toml` for future PyPI release; `typescript/package.json` for future npm release.
 - Open related issues or PRs: none found in this empty repo.
-- Risks: Couchbase vector Search indexes are deployment- and dimension-specific, so this connector validates/uses an existing index instead of silently creating a wrong one.
+- Risks: Couchbase Hyperscale Vector Indexes are the preferred default; Search-service vector indexes are kept as a legacy fallback. Index definitions remain deployment- and dimension-specific, so the connector validates/uses an existing index instead of silently creating a wrong one.
 
 # Integration Research
 
@@ -43,16 +43,15 @@ Sources checked:
 
 | Reference | What can be reused | Gaps |
 | --- | --- | --- |
-| Couchbase Python SDK vector_search example | `SearchRequest.create(VectorSearch.from_vector_query(VectorQuery(...)))`, `scope.search(...)` | Example assumes pre-created test index and sample docs |
-| Couchbase Node.js SDK search docs/example | `SearchRequest.create(VectorSearch.fromVectorQuery(VectorQuery.create(...)))`, `scope.search(...)` | Example is not a Strands store and assumes sample index |
-| Couchbase SDK vector search classes | Official APIs for VectorQuery and VectorSearch in Python/Node SDKs | Index creation JSON remains environment-specific |
+| Couchbase Hyperscale Vector Index docs | `CREATE VECTOR INDEX` plus SQL++ `APPROX_VECTOR_DISTANCE(...)` through Query/Index services | Preferred/default path; requires pre-created Hyperscale Vector Index |
+| Couchbase Python/Node Search SDK docs | `SearchRequest.create(VectorSearch...)`, `scope.search(...)` | Confirmed this is the Search-service vector API, not Hyperscale |
 | couchbase-examples/vector-search-cookbook | Capella/Couchbase vector search RAG patterns | Notebook-oriented; not a Strands MemoryStore |
 
 ## Design Implications
 
 - API shape: `CouchbaseMemoryStore` in both languages, taking Couchbase connection/index fields plus an embedding provider callback/object.
-- Required Couchbase features: KV writes and Couchbase Search vector queries over a pre-existing Search index.
-- Main risks: Search index creation differs by Couchbase version/dimensions; automatic creation could create incorrect mappings.
+- Required Couchbase features: KV writes and SQL++ vector queries over a pre-existing Hyperscale Vector Index.
+- Main risks: Hyperscale index creation differs by dimensions/similarity/centroid tuning; automatic creation could create incorrect mappings.
 - Recommended implementation path: owned extension packages in this repo with explicit setup docs and gated live integration tests.
 
 # Couchbase Capability Matrix
@@ -61,9 +60,9 @@ Sources checked:
 | --- | --- | --- | --- | --- |
 | Connection/auth | Connect with credentials to cluster | Python and Node SDKs support password auth and Capella/local connection strings | Couchbase SDK examples | Constructor/env config in both languages |
 | CRUD/KV | `add` must persist memories | Couchbase collections support upsert/get/remove | SDK collection examples | Use KV `upsert` for memory documents |
-| Query/filtering | Isolate tenants/namespaces | Search vector query prefilter supports SearchQuery filters | Python/Node vector search examples | Filter by configurable namespace field |
-| Index management | Vector search requires index | Couchbase Search supports vector fields, but definitions depend on dimensions/version | SDK vector examples rely on pre-existing index | Do not auto-create; validate through docs/tests and fail with clear setup guidance |
-| Search/vector search | `search` must return relevant entries | Couchbase Vector Search via SDK `VectorQuery`/`VectorSearch` | Official Python and Node SDK vector APIs | Use scope search against configured Search index |
+| Query/filtering | Isolate tenants/namespaces | SQL++ `WHERE` filters with fields included in the Hyperscale Vector Index | Couchbase Hyperscale docs and live Docker tests | Filter by configurable namespace field |
+| Index management | Vector search requires index | Couchbase supports Hyperscale Vector Indexes via `CREATE VECTOR INDEX`; Search Vector Indexes remain a fallback | Couchbase Hyperscale docs | Do not auto-create; document setup and fail clearly if missing |
+| Search/vector search | `search` must return relevant entries | Couchbase Hyperscale Vector Index via SQL++ `APPROX_VECTOR_DISTANCE` | Couchbase docs and live Docker tests | Use Query service by default; legacy Search-service backend optional |
 | Transactions/durability | Not required by Strands MemoryStore | Couchbase supports durability options, not needed for baseline | SDK capability | Keep baseline simple; document advanced users can extend |
 | Streaming/change events | Not required | Couchbase DCP/eventing exists but not needed | Product capability | Out of scope |
 | Local test environment | Required where possible | Couchbase Docker can run locally, but vector Search index setup is heavier than unit CI | Pre-pulled local image and SDK docs | Add gated integration tests and setup docs; run unit/build in CI by default |
@@ -75,19 +74,19 @@ Status: Implementable with limitations
 Reason:
 
 - Strands exposes a public MemoryStore interface in both Python and TypeScript.
-- Couchbase supports KV writes and vector search through official Python and Node SDKs.
+- Couchbase supports KV writes and Hyperscale vector search through SQL++ in the official Python and Node SDKs.
 - The connector can stay model-vendor-neutral by accepting an embedding provider callback/object.
-- The only material limitation is that Search index creation is not safely generic, because vector dimensions, field mappings, and scoped/global index placement are deployment-specific.
+- The only material limitation is that vector index creation is not safely generic, because vector dimensions, similarity metrics, and centroid tuning are deployment-specific.
 
 Evidence:
 
 - Strands MemoryStore protocol files in `strands-agents/harness-sdk`.
 - Strands extension-template MemoryStore skeletons for Python and TypeScript.
-- Couchbase Python SDK vector search example using `VectorQuery`, `VectorSearch`, `SearchRequest`, and `scope.search`.
-- Couchbase Node.js SDK search example using `VectorQuery.create`, `VectorSearch.fromVectorQuery`, `SearchRequest.create`, and `scope.search`.
+- Couchbase Hyperscale Vector Index docs using `CREATE VECTOR INDEX` and `APPROX_VECTOR_DISTANCE`.
+- Couchbase Python SDK 4.6.2 and Node SDK 4.7.1: `VectorQuery` / `VectorSearch` remain Search-service APIs; Hyperscale uses SQL++ query APIs.
 
 Implementation path:
 
 - Owned Couchbase example/extension repository with separate Python and TypeScript packages.
 - Implement `search`, `add`, and raw `add_messages`/`addMessages` for completeness.
-- Require a pre-created Couchbase Search index and document setup thoroughly.
+- Require a pre-created Couchbase Hyperscale Vector Index by default and document legacy Search-service setup separately.

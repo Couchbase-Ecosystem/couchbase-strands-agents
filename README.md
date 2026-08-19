@@ -22,9 +22,9 @@ This integration does not generate embeddings itself. You provide an embedding p
 ## Requirements
 
 - Strands Agents with `MemoryStore` support.
-- Couchbase Capella or Couchbase Server with the Search service and Vector Search enabled.
-- A Couchbase bucket, scope, collection, and Search index that indexes your vector field.
-- An embedding provider that returns vectors with the same dimensions as the Search index.
+- Couchbase Capella or Couchbase Server with the Index and Query services enabled for Hyperscale Vector Indexes.
+- A Couchbase bucket, scope, collection, and Hyperscale Vector Index on your vector field.
+- An embedding provider that returns vectors with the same dimensions as the Hyperscale Vector Index.
 
 ## Choose Capella or local Couchbase
 
@@ -52,14 +52,23 @@ Default field names are configurable:
 - metadata: `metadata`
 - namespace: `namespace`
 
-## Search index
+## Vector index
 
-Create a Couchbase Search index that maps the vector field as a vector field and stores the fields returned by the connector. The exact index JSON depends on Couchbase version and Capella UI, but the index must include:
+By default, the connector uses Couchbase Hyperscale Vector Indexes through SQL++ `APPROX_VECTOR_DISTANCE`, because this is Couchbase's latest and preferred vector-search path. Create a Hyperscale Vector Index on your embedding field and include the fields returned by the connector:
 
-- a vector field named `embedding` (or your configured vector field), with dimensions matching your embedding provider;
-- a text or stored field named `content`;
-- a filterable/stored field named `namespace` for tenant isolation;
-- stored `metadata` if you want metadata returned with search hits.
+```sql
+CREATE VECTOR INDEX `strands-memory-vector-index`
+ON `strands_memory`.`_default`.`_default` (`embedding` VECTOR)
+INCLUDE (`content`, `metadata`, `namespace`)
+USING GSI
+WITH {
+  "dimension": 3,
+  "similarity": "L2_SQUARED",
+  "description": "IVF,SQ8"
+};
+```
+
+The connector also supports the legacy Search-service vector API by setting `COUCHBASE_VECTOR_BACKEND=search` (or `vector_backend="search"` / `vectorBackend: "search"`) and configuring a Search Vector Index.
 
 See `docs/couchbase-setup.md` for local and Capella setup notes.
 
@@ -92,7 +101,7 @@ store = CouchbaseMemoryStore(
     username="Administrator",
     password="password",
     bucket_name="strands_memory",
-    search_index_name="strands-memory-index",
+    distance_metric="L2_SQUARED",
     embedding_provider=DemoEmbeddingProvider(),
     dimensions=3,
     writable=True,
@@ -135,7 +144,7 @@ const store = new CouchbaseMemoryStore({
   username: 'Administrator',
   password: 'password',
   bucketName: 'strands_memory',
-  searchIndexName: 'strands-memory-index',
+  distanceMetric: 'L2_SQUARED',
   dimensions: 3,
   writable: true,
   extraction: true,
@@ -173,7 +182,9 @@ Use constructor arguments or environment variables. Constructor arguments take p
 | Bucket | `COUCHBASE_BUCKET` | `COUCHBASE_BUCKET` | `strands_memory` |
 | Scope | `COUCHBASE_SCOPE` | `COUCHBASE_SCOPE` | `_default` |
 | Collection | `COUCHBASE_COLLECTION` | `COUCHBASE_COLLECTION` | `_default` |
-| Search index | `COUCHBASE_SEARCH_INDEX` | `COUCHBASE_SEARCH_INDEX` | `strands-memory-index` |
+| Vector backend | `COUCHBASE_VECTOR_BACKEND` | `COUCHBASE_VECTOR_BACKEND` | `hyperscale` |
+| Distance metric | `COUCHBASE_DISTANCE_METRIC` | `COUCHBASE_DISTANCE_METRIC` | `L2_SQUARED` |
+| Legacy Search index | `COUCHBASE_SEARCH_INDEX` | `COUCHBASE_SEARCH_INDEX` | `strands-memory-search-index` |
 | Namespace | `COUCHBASE_NAMESPACE` | `COUCHBASE_NAMESPACE` | `default` |
 
 ## Developer workflow
@@ -228,9 +239,9 @@ The task explicitly says not to publish packages yet, so this repository stops a
 ## Troubleshooting
 
 - Connection failures: verify `COUCHBASE_CONNECTION_STRING`, credentials, TLS settings, and allowed IPs in Capella.
-- Empty search results after writes: Search indexing is asynchronous; wait for the index to ingest documents and verify the index maps the configured vector field.
-- Vector dimension errors: ensure your embedding provider returns exactly the same number of dimensions as the Search index.
-- Metadata filters not matching: make sure metadata and namespace fields are indexed as filterable/stored fields in the Search index.
+- Empty search results after writes: verify the Hyperscale Vector Index exists, the distance metric matches the query metric, and `num_candidates` / `numCandidates` probes enough centroids for your data.
+- Vector dimension errors: ensure your embedding provider returns exactly the same number of dimensions as the Hyperscale Vector Index.
+- Metadata filters not matching: make sure metadata and namespace fields are included in the Hyperscale Vector Index or switch to a Composite Vector Index when scalar filters should run before vector search.
 
 ## Research and design notes
 

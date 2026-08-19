@@ -84,6 +84,8 @@ async def test_search_maps_hits_to_strands_memory_entries() -> None:
     }
     assert backend.search_calls[0]["limit"] == 2
     assert backend.search_calls[0]["namespace"] == "tenant_b"
+    assert backend.search_calls[0]["vector_backend"] == "hyperscale"
+    assert backend.search_calls[0]["distance_metric"] == "L2_SQUARED"
 
 
 @pytest.mark.asyncio

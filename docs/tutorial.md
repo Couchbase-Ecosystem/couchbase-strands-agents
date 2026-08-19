@@ -5,10 +5,10 @@ This tutorial runs the Python and TypeScript packages against the same Couchbase
 ## Prerequisites
 
 - Python 3.10+ and Node.js 20+.
-- Couchbase Capella or local Couchbase Server with Search enabled.
-- A Search index named `strands-memory-index` mapping a 3-dimensional vector field named `embedding` for this tutorial's demo embedding provider.
+- Couchbase Capella or local Couchbase Server with Query and Index enabled.
+- A Hyperscale Vector Index mapping a 3-dimensional vector field named `embedding` for this tutorial's demo embedding provider.
 
-For production, replace the demo provider with a real embedding provider and update the Search index dimensions.
+For production, replace the demo provider with a real embedding provider and update the Hyperscale Vector Index dimensions.
 
 ## 1. Configure Couchbase
 
@@ -20,7 +20,8 @@ export COUCHBASE_PASSWORD=********
 export COUCHBASE_BUCKET=strands_memory
 export COUCHBASE_SCOPE=_default
 export COUCHBASE_COLLECTION=_default
-export COUCHBASE_SEARCH_INDEX=strands-memory-index
+export COUCHBASE_VECTOR_BACKEND=hyperscale
+export COUCHBASE_DISTANCE_METRIC=L2_SQUARED
 export COUCHBASE_NAMESPACE=tutorial
 ```
 
@@ -38,11 +39,11 @@ Expected output:
 
 ```text
 stored key: memory::tutorial::<uuid>
-Search indexes update asynchronously; wait for indexing before expecting a hit.
+Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`; ensure your vector index metric matches `COUCHBASE_DISTANCE_METRIC`.
 hit: Alex prefers dark-mode dashboards and async standups. metadata={...}
 ```
 
-The hit can be absent on the first run until the Search index catches up.
+For small local test datasets, increase `num_candidates` / `numCandidates` if approximate search misses a recently added vector.
 
 ## 3. TypeScript example
 
@@ -61,10 +62,10 @@ cd python && pytest
 cd ../typescript && npm test
 ```
 
-Set `COUCHBASE_INTEGRATION_TESTS=1` to run the live Couchbase tests after the Search index is created.
+Set `COUCHBASE_INTEGRATION_TESTS=1` to run the live Couchbase tests after the Hyperscale Vector Index is created.
 
 ## Common errors
 
-- `embedding provider returned N dimensions; expected M`: update either your embedding provider or Search index mapping.
-- No search hits: wait for Search indexing; verify `COUCHBASE_SEARCH_INDEX`; verify namespace filtering.
+- `embedding provider returned N dimensions; expected M`: update either your embedding provider or Hyperscale Vector Index mapping.
+- No search hits: verify the Hyperscale Vector Index, `COUCHBASE_DISTANCE_METRIC`, namespace filtering, and centroid probe count.
 - Authentication errors: verify username/password and Capella allowed IPs.

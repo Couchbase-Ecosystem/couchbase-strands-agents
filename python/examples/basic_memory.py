@@ -31,7 +31,7 @@ async def main() -> None:
         bucket_name=os.getenv("COUCHBASE_BUCKET", "strands_memory"),
         scope_name=os.getenv("COUCHBASE_SCOPE", "_default"),
         collection_name=os.getenv("COUCHBASE_COLLECTION", "_default"),
-        search_index_name=os.getenv("COUCHBASE_SEARCH_INDEX", "strands-memory-index"),
+        distance_metric=os.getenv("COUCHBASE_DISTANCE_METRIC", "L2_SQUARED"),
         namespace=os.getenv("COUCHBASE_NAMESPACE", "demo"),
         embedding_provider=DemoEmbeddingProvider(),
         dimensions=3,
@@ -40,7 +40,10 @@ async def main() -> None:
     try:
         key = await store.add("Alex prefers dark-mode dashboards and async standups.", {"category": "preference"})
         print(f"stored key: {key}")
-        print("Search indexes update asynchronously; wait for indexing before expecting a hit.")
+        print(
+            "Hyperscale Vector queries use SQL++ APPROX_VECTOR_DISTANCE; "
+            "ensure the index metric matches COUCHBASE_DISTANCE_METRIC."
+        )
         entries = await store.search("How does Alex like to work?", {"max_search_results": 3})
         for entry in entries:
             print(f"hit: {entry.content} metadata={entry.metadata}")

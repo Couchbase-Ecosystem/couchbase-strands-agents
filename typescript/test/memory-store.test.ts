@@ -83,6 +83,8 @@ describe('CouchbaseMemoryStore', () => {
     ])
     expect(backend.searchCalls[0].limit).toBe(2)
     expect(backend.searchCalls[0].namespace).toBe('tenant_b')
+    expect(backend.searchCalls[0].vectorBackend).toBe('hyperscale')
+    expect(backend.searchCalls[0].distanceMetric).toBe('L2_SQUARED')
   })
 
   it('fails fast on dimension mismatch', async () => {
