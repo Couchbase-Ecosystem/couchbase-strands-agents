@@ -1,4 +1,4 @@
-"""Couchbase Vector Search MemoryStore for Strands Agents."""
+"""Couchbase Hyperscale Vector Search MemoryStore for Strands Agents."""
 
 from .memory_store import (
     CouchbaseMemoryStore,

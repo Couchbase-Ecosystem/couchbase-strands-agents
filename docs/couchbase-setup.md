@@ -1,6 +1,6 @@
 # Couchbase setup for Strands memory
 
-This guide covers development setup for the Couchbase Vector Search MemoryStore examples.
+This guide covers development setup for the Couchbase Hyperscale Vector Search MemoryStore examples.
 
 ## Capella
 

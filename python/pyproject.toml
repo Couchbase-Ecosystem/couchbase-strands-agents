@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "strands-couchbase-memory"
 dynamic = ["version"]
-description = "Couchbase Vector Search MemoryStore extension for Strands Agents"
+description = "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
@@ -22,8 +22,8 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "couchbase>=4.4.0,<5.0.0",
-  "strands-agents>=1.0.0",
+  "couchbase>=4.6.2,<5.0.0",
+  "strands-agents>=1.52.0",
   "typing-extensions>=4.10.0",
 ]
 

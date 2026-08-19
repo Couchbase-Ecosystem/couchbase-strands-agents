@@ -1,6 +1,6 @@
-# Couchbase Vector Search MemoryStore for Strands Agents
+# Couchbase Hyperscale Vector Search MemoryStore for Strands Agents
 
-This repository contains Python and TypeScript Strands Agents extension packages that implement the Strands `MemoryStore` interface with Couchbase Vector Search.
+This repository contains Python and TypeScript Strands Agents extension packages that implement the Strands `MemoryStore` interface with Couchbase Hyperscale Vector Search.
 
 The packages are prepared for publishing as separate Strands extensions, but they are not published to PyPI or npm yet.
 
@@ -224,17 +224,18 @@ Repository-wide checks:
 
 Python package:
 
-1. Tag a release such as `python-v0.1.0`.
-2. Build from `python/` with `python -m build`.
-3. Upload with `twine upload dist/*` from a maintainer machine configured for the target PyPI project.
+1. Configure PyPI trusted publishing for GitHub environment `pypi` and workflow `.github/workflows/release-python.yml`.
+2. Tag a release such as `python-v0.1.0`.
+3. Pushing the tag runs the release workflow, builds from `python/`, checks the artifacts with Twine, and publishes to PyPI.
 
 TypeScript package:
 
-1. Update `typescript/package.json` version.
-2. Build and verify with `npm run build && npm pack --dry-run`.
-3. Publish with `npm publish --access public` from a maintainer machine with npm publish access for `@couchbase-examples`.
+1. Configure repository secret `NPM_TOKEN` with publish access for `@couchbase-examples` and protect the GitHub environment `npm` as needed.
+2. Update `typescript/package.json` version.
+3. Tag a release such as `typescript-v0.1.0`.
+4. Pushing the tag runs the release workflow, validates the package, and publishes with `npm publish --access public`.
 
-The task explicitly says not to publish packages yet, so this repository stops at package preparation.
+The release workflows can also be triggered manually with `workflow_dispatch` against an existing release tag.
 
 ## Troubleshooting
 
