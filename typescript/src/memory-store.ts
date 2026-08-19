@@ -11,7 +11,7 @@ import type {
 } from '@strands-agents/sdk'
 
 const DEFAULT_NAME = 'couchbase'
-const DEFAULT_DESCRIPTION = 'Long-term semantic memory stored in Couchbase Vector Search.'
+const DEFAULT_DESCRIPTION = 'Long-term semantic memory stored in Couchbase Hyperscale Vector Search.'
 const DEFAULT_CONNECTION_STRING = 'couchbase://localhost'
 const DEFAULT_BUCKET = 'strands_memory'
 const DEFAULT_SCOPE = '_default'

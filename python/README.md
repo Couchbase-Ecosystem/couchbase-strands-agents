@@ -1,6 +1,6 @@
 # Python Couchbase MemoryStore package
 
-`strands-couchbase-memory` implements the Strands Agents `MemoryStore` protocol with Couchbase Vector Search.
+`strands-couchbase-memory` implements the Strands Agents `MemoryStore` protocol with Couchbase Hyperscale Vector Search.
 
 ## Install for development
 

@@ -1,6 +1,6 @@
 # TypeScript Couchbase MemoryStore package
 
-`@couchbase-examples/strands-couchbase-memory` implements the Strands Agents `MemoryStore` interface with Couchbase Vector Search.
+`@couchbase-examples/strands-couchbase-memory` implements the Strands Agents `MemoryStore` interface with Couchbase Hyperscale Vector Search.
 
 ## Install for development
 

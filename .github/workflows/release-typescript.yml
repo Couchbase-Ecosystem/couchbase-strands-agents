@@ -1,0 +1,50 @@
+name: Release - TypeScript
+
+on:
+  push:
+    tags:
+      - 'typescript-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing typescript-v* tag to publish from; defaults to current ref'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-typescript-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: typescript
+
+jobs:
+  publish:
+    name: Build and publish npm package
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run type-check
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
