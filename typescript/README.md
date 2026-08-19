@@ -21,7 +21,7 @@ const store = new CouchbaseMemoryStore({
   username: 'Administrator',
   password: 'password',
   bucketName: 'strands_memory',
-  searchIndexName: 'strands-memory-index',
+  distanceMetric: 'L2_SQUARED',
   dimensions: 3,
   embeddingProvider: { async embed() { return [0, 1, 0] } },
   writable: true,
@@ -42,4 +42,4 @@ npm run build
 npm pack --dry-run
 ```
 
-Live integration tests are skipped unless `COUCHBASE_INTEGRATION_TESTS=1` and the Couchbase env vars in `.env.example` point at a cluster with a compatible Search index.
+Live integration tests are skipped unless `COUCHBASE_INTEGRATION_TESTS=1` and the Couchbase env vars in `.env.example` point at a cluster with a compatible Hyperscale Vector Index.

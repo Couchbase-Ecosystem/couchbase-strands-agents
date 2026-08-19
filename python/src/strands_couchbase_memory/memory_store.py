@@ -13,9 +13,9 @@ from uuid import uuid4
 
 import couchbase.search as couchbase_search
 from couchbase.auth import PasswordAuthenticator
-from couchbase.cluster import Cluster
+from couchbase.cluster import Cluster, QueryScanConsistency
 from couchbase.collection import Collection
-from couchbase.options import ClusterOptions, SearchOptions
+from couchbase.options import ClusterOptions, QueryOptions, SearchOptions
 from couchbase.vector_search import VectorQuery, VectorSearch
 from strands.memory import AddMessagesContext, MemoryEntry, MemoryStore, MemoryStoreConfig
 from strands.memory import SearchOptions as StrandsSearchOptions
@@ -28,7 +28,9 @@ DEFAULT_CONNECTION_STRING = "couchbase://localhost"
 DEFAULT_BUCKET = "strands_memory"
 DEFAULT_SCOPE = "_default"
 DEFAULT_COLLECTION = "_default"
-DEFAULT_SEARCH_INDEX = "strands-memory-index"
+DEFAULT_SEARCH_INDEX = "strands-memory-search-index"
+DEFAULT_VECTOR_BACKEND = "hyperscale"
+DEFAULT_DISTANCE_METRIC = "L2_SQUARED"
 DEFAULT_CONTENT_FIELD = "content"
 DEFAULT_VECTOR_FIELD = "embedding"
 DEFAULT_METADATA_FIELD = "metadata"
@@ -63,6 +65,8 @@ class CouchbaseMemoryStoreConfig(MemoryStoreConfig, total=False):
     scope_name: str
     collection_name: str
     search_index_name: str
+    vector_backend: str
+    distance_metric: str
     content_field: str
     vector_field: str
     metadata_field: str
@@ -109,6 +113,8 @@ class CouchbaseBackend(Protocol):
         self,
         *,
         search_index_name: str,
+        vector_backend: str,
+        distance_metric: str,
         vector_field: str,
         query_vector: list[float],
         limit: int,
@@ -129,10 +135,11 @@ class CouchbaseBackend(Protocol):
 class CouchbaseSdkBackend:
     """Couchbase Python SDK adapter.
 
-    It uses KV for writes and Couchbase Search `VectorQuery` / `VectorSearch`
-    for semantic recall. Search indexes are intentionally not created by this
-    class because Couchbase vector index definitions are deployment- and
-    dimension-specific. The README and setup docs show how to create them.
+    The default recall path uses Hyperscale Vector Indexes through SQL++
+    `APPROX_VECTOR_DISTANCE`, which is Couchbase's preferred high-performance
+    vector-search path. The older Search-service `VectorQuery` API remains
+    available by setting `vector_backend="search"` for deployments that still
+    use Search Vector Indexes.
     """
 
     def __init__(
@@ -152,6 +159,9 @@ class CouchbaseSdkBackend:
             connection_string,
             ClusterOptions(PasswordAuthenticator(username, password)),
         )
+        self._bucket_name = bucket_name
+        self._scope_name = scope_name
+        self._collection_name = collection_name
         self._bucket = self._cluster.bucket(bucket_name)
         self._scope = self._bucket.scope(scope_name) if scope_name != DEFAULT_SCOPE else self._bucket.default_scope()
         self._collection = collection or (
@@ -164,6 +174,112 @@ class CouchbaseSdkBackend:
         await asyncio.to_thread(self._collection.upsert, key, document)
 
     async def vector_search(
+        self,
+        *,
+        search_index_name: str,
+        vector_backend: str,
+        distance_metric: str,
+        vector_field: str,
+        query_vector: list[float],
+        limit: int,
+        num_candidates: int | None,
+        namespace: str,
+        namespace_field: str,
+        content_field: str,
+        metadata_field: str,
+    ) -> list[SearchHit]:
+        if vector_backend == "search":
+            return await self._search_service_vector_search(
+                search_index_name=search_index_name,
+                vector_field=vector_field,
+                query_vector=query_vector,
+                limit=limit,
+                num_candidates=num_candidates,
+                namespace=namespace,
+                namespace_field=namespace_field,
+                content_field=content_field,
+                metadata_field=metadata_field,
+            )
+        if vector_backend != "hyperscale":
+            raise ValueError("vector_backend must be 'hyperscale' or 'search'")
+        return await self._hyperscale_vector_search(
+            vector_field=vector_field,
+            query_vector=query_vector,
+            limit=limit,
+            namespace=namespace,
+            namespace_field=namespace_field,
+            content_field=content_field,
+            metadata_field=metadata_field,
+            num_candidates=num_candidates,
+            distance_metric=distance_metric,
+        )
+
+    async def _hyperscale_vector_search(
+        self,
+        *,
+        vector_field: str,
+        query_vector: list[float],
+        limit: int,
+        namespace: str,
+        namespace_field: str,
+        content_field: str,
+        metadata_field: str,
+        num_candidates: int | None,
+        distance_metric: str,
+    ) -> list[SearchHit]:
+        def _search() -> list[SearchHit]:
+            collection = _quote_identifier(self._collection_name)
+            content_expr = _quote_path(content_field)
+            metadata_expr = _quote_path(metadata_field)
+            namespace_expr = _quote_path(namespace_field)
+            vector_expr = _quote_path(vector_field)
+            distance_metric_literal = _quote_string_literal(_validate_distance_metric(distance_metric))
+            centroids_to_probe = int(num_candidates or 8)
+            statement = f"""
+                SELECT META().id AS id,
+                       {content_expr} AS content,
+                       {metadata_expr} AS metadata,
+                       {namespace_expr} AS namespace_value,
+                       APPROX_VECTOR_DISTANCE(
+                           {vector_expr},
+                           $query_vector,
+                           {distance_metric_literal},
+                           {centroids_to_probe}
+                       ) AS distance
+                FROM {collection}
+                WHERE {namespace_expr} = $namespace
+                ORDER BY distance
+                LIMIT {int(limit)}
+            """
+            result = self._scope.query(
+                statement,
+                QueryOptions(
+                    named_parameters={
+                        "query_vector": query_vector,
+                        "namespace": namespace,
+                    },
+                    scan_consistency=QueryScanConsistency.REQUEST_PLUS,
+                ),
+            )
+            hits: list[SearchHit] = []
+            for row in result.rows():
+                metadata = row.get("metadata") or {}
+                if not isinstance(metadata, dict):
+                    metadata = {"value": metadata}
+                hits.append(
+                    SearchHit(
+                        id=str(row.get("id", "")),
+                        score=cast(float | None, row.get("distance")),
+                        content=str(row.get("content", "")),
+                        metadata=metadata,
+                        namespace=cast(str | None, row.get("namespace_value")),
+                    )
+                )
+            return hits
+
+        return await asyncio.to_thread(_search)
+
+    async def _search_service_vector_search(
         self,
         *,
         search_index_name: str,
@@ -238,6 +354,14 @@ class CouchbaseMemoryStore(MemoryStore):
         self.metadata_field = store_config.get("metadata_field", DEFAULT_METADATA_FIELD)
         self.namespace_field = store_config.get("namespace_field", DEFAULT_NAMESPACE_FIELD)
         self.namespace = store_config.get("namespace") or os.getenv("COUCHBASE_NAMESPACE") or DEFAULT_NAMESPACE
+        self.vector_backend = (
+            store_config.get("vector_backend") or os.getenv("COUCHBASE_VECTOR_BACKEND") or DEFAULT_VECTOR_BACKEND
+        ).lower()
+        if self.vector_backend not in {"hyperscale", "search"}:
+            raise ValueError("vector_backend must be 'hyperscale' or 'search'")
+        self.distance_metric = (
+            store_config.get("distance_metric") or os.getenv("COUCHBASE_DISTANCE_METRIC") or DEFAULT_DISTANCE_METRIC
+        ).upper()
         self.search_index_name = (
             store_config.get("search_index_name") or os.getenv("COUCHBASE_SEARCH_INDEX") or DEFAULT_SEARCH_INDEX
         )
@@ -271,6 +395,8 @@ class CouchbaseMemoryStore(MemoryStore):
         query_vector = await self._embed(query)
         hits = await self._backend.vector_search(
             search_index_name=self.search_index_name,
+            vector_backend=self.vector_backend,
+            distance_metric=self.distance_metric,
             vector_field=self.vector_field,
             query_vector=query_vector,
             limit=limit,
@@ -348,6 +474,31 @@ class CouchbaseMemoryStore(MemoryStore):
         if self.dimensions is not None and len(vector) != self.dimensions:
             raise ValueError(f"embedding provider returned {len(vector)} dimensions; expected {self.dimensions}")
         return vector
+
+
+def _validate_distance_metric(distance_metric: str) -> str:
+    metric = distance_metric.upper()
+    allowed = {"COSINE", "DOT", "L2", "EUCLIDEAN", "L2_SQUARED", "EUCLIDEAN_SQUARED"}
+    if metric not in allowed:
+        raise ValueError(f"distance_metric must be one of {sorted(allowed)}")
+    return metric
+
+
+def _quote_string_literal(value: str) -> str:
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _quote_identifier(identifier: str) -> str:
+    """Quote one SQL++ identifier segment with backticks."""
+    if not identifier or "\x00" in identifier:
+        raise ValueError("SQL++ identifiers must be non-empty strings")
+    return f"`{identifier.replace('`', '``')}`"
+
+
+def _quote_path(path: str) -> str:
+    """Quote a dotted SQL++ field path such as metadata.category."""
+    return ".".join(_quote_identifier(part) for part in path.split("."))
 
 
 def _message_to_text(message: Message) -> str:

@@ -16,13 +16,17 @@ const DEFAULT_CONNECTION_STRING = 'couchbase://localhost'
 const DEFAULT_BUCKET = 'strands_memory'
 const DEFAULT_SCOPE = '_default'
 const DEFAULT_COLLECTION = '_default'
-const DEFAULT_SEARCH_INDEX = 'strands-memory-index'
+const DEFAULT_SEARCH_INDEX = 'strands-memory-search-index'
+const DEFAULT_VECTOR_BACKEND = 'hyperscale'
+const DEFAULT_DISTANCE_METRIC = 'L2_SQUARED'
 const DEFAULT_CONTENT_FIELD = 'content'
 const DEFAULT_VECTOR_FIELD = 'embedding'
 const DEFAULT_METADATA_FIELD = 'metadata'
 const DEFAULT_NAMESPACE_FIELD = 'namespace'
 const DEFAULT_NAMESPACE = 'default'
 const DEFAULT_MAX_RESULTS = 5
+
+export type CouchbaseVectorBackend = 'hyperscale' | 'search'
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]> | number[]
@@ -49,6 +53,8 @@ export interface CouchbaseBackend {
   upsert(key: string, document: MemoryDocument): Promise<void>
   vectorSearch(input: {
     searchIndexName: string
+    vectorBackend: CouchbaseVectorBackend
+    distanceMetric: string
     vectorField: string
     queryVector: number[]
     limit: number
@@ -69,6 +75,8 @@ export interface CouchbaseMemoryStoreConfig extends MemoryStoreConfig {
   scopeName?: string
   collectionName?: string
   searchIndexName?: string
+  vectorBackend?: CouchbaseVectorBackend
+  distanceMetric?: string
   contentField?: string
   vectorField?: string
   metadataField?: string
@@ -127,6 +135,85 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
 
   async vectorSearch(input: {
     searchIndexName: string
+    vectorBackend: CouchbaseVectorBackend
+    distanceMetric: string
+    vectorField: string
+    queryVector: number[]
+    limit: number
+    numCandidates?: number | undefined
+    namespace: string
+    namespaceField: string
+    contentField: string
+    metadataField: string
+  }): Promise<SearchHit[]> {
+    if (input.vectorBackend === 'search') return this.searchServiceVectorSearch(input)
+    return this.hyperscaleVectorSearch(input)
+  }
+
+  async close(): Promise<void> {
+    const cluster = this.cluster ?? (this.connectPromise ? await this.connectPromise : undefined)
+    if (this.ownsCluster && cluster !== undefined) {
+      await cluster.close()
+    }
+  }
+
+  private async hyperscaleVectorSearch(input: {
+    vectorField: string
+    queryVector: number[]
+    limit: number
+    namespace: string
+    namespaceField: string
+    contentField: string
+    metadataField: string
+    distanceMetric: string
+    numCandidates?: number | undefined
+  }): Promise<SearchHit[]> {
+    const scope = await this.getScope()
+    const collection = quoteIdentifier(this.config.collectionName)
+    const contentExpr = quotePath(input.contentField)
+    const metadataExpr = quotePath(input.metadataField)
+    const namespaceExpr = quotePath(input.namespaceField)
+    const vectorExpr = quotePath(input.vectorField)
+    const distanceMetricLiteral = quoteStringLiteral(validateDistanceMetric(input.distanceMetric))
+    const centroidsToProbe = Math.trunc(input.numCandidates ?? 8)
+    const statement = `
+      SELECT META().id AS id,
+             ${contentExpr} AS content,
+             ${metadataExpr} AS metadata,
+             ${namespaceExpr} AS namespace_value,
+             APPROX_VECTOR_DISTANCE(
+               ${vectorExpr},
+               $query_vector,
+               ${distanceMetricLiteral},
+               ${centroidsToProbe}
+             ) AS distance
+      FROM ${collection}
+      WHERE ${namespaceExpr} = $namespace
+      ORDER BY distance
+      LIMIT ${Math.trunc(input.limit)}
+    `
+    const result = await scope.query(statement, {
+      parameters: {
+        query_vector: input.queryVector,
+        namespace: input.namespace,
+      },
+      scanConsistency: couchbase.QueryScanConsistency.RequestPlus,
+    })
+    return result.rows.map((row: any) => {
+      const rawMetadata = row.metadata as JSONValue | undefined
+      const metadata = isRecord(rawMetadata) ? rawMetadata : rawMetadata === undefined ? {} : { value: rawMetadata }
+      return {
+        id: String(row.id ?? ''),
+        score: typeof row.distance === 'number' ? row.distance : undefined,
+        content: String(row.content ?? ''),
+        metadata,
+        namespace: typeof row.namespace_value === 'string' ? row.namespace_value : undefined,
+      }
+    })
+  }
+
+  private async searchServiceVectorSearch(input: {
+    searchIndexName: string
     vectorField: string
     queryVector: number[]
     limit: number
@@ -159,13 +246,6 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
         namespace: typeof namespace === 'string' ? namespace : undefined,
       }
     })
-  }
-
-  async close(): Promise<void> {
-    const cluster = this.cluster ?? (this.connectPromise ? await this.connectPromise : undefined)
-    if (this.ownsCluster && cluster !== undefined) {
-      await cluster.close()
-    }
   }
 
   private async getScope(): Promise<couchbase.Scope> {
@@ -212,6 +292,8 @@ export class CouchbaseMemoryStore implements MemoryStore {
   readonly extraction?: boolean | ExtractionConfig
 
   private readonly searchIndexName: string
+  private readonly vectorBackend: CouchbaseVectorBackend
+  private readonly distanceMetric: string
   private readonly contentField: string
   private readonly vectorField: string
   private readonly metadataField: string
@@ -228,6 +310,18 @@ export class CouchbaseMemoryStore implements MemoryStore {
     this.maxSearchResults = config.maxSearchResults ?? DEFAULT_MAX_RESULTS
     this.writable = config.writable ?? true
     if (config.extraction !== undefined) this.extraction = config.extraction
+    this.vectorBackend =
+      config.vectorBackend ??
+      (process.env.COUCHBASE_VECTOR_BACKEND as CouchbaseVectorBackend | undefined) ??
+      DEFAULT_VECTOR_BACKEND
+    if (this.vectorBackend !== 'hyperscale' && this.vectorBackend !== 'search') {
+      throw new Error("vectorBackend must be 'hyperscale' or 'search'")
+    }
+    this.distanceMetric = (
+      config.distanceMetric ??
+      process.env.COUCHBASE_DISTANCE_METRIC ??
+      DEFAULT_DISTANCE_METRIC
+    ).toUpperCase()
     this.searchIndexName = config.searchIndexName ?? process.env.COUCHBASE_SEARCH_INDEX ?? DEFAULT_SEARCH_INDEX
     this.contentField = config.contentField ?? DEFAULT_CONTENT_FIELD
     this.vectorField = config.vectorField ?? DEFAULT_VECTOR_FIELD
@@ -258,6 +352,8 @@ export class CouchbaseMemoryStore implements MemoryStore {
     const queryVector = await this.embed(query)
     const hits = await this.backend.vectorSearch({
       searchIndexName: this.searchIndexName,
+      vectorBackend: this.vectorBackend,
+      distanceMetric: this.distanceMetric,
       vectorField: this.vectorField,
       queryVector,
       limit,
@@ -337,6 +433,26 @@ function messageToText(message: MessageData): string {
     .filter(Boolean)
     .join('\n')
     .trim()
+}
+
+function validateDistanceMetric(distanceMetric: string): string {
+  const metric = distanceMetric.toUpperCase()
+  const allowed = new Set(['COSINE', 'DOT', 'L2', 'EUCLIDEAN', 'L2_SQUARED', 'EUCLIDEAN_SQUARED'])
+  if (!allowed.has(metric)) throw new Error(`distanceMetric must be one of ${[...allowed].join(', ')}`)
+  return metric
+}
+
+function quoteStringLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`
+}
+
+function quoteIdentifier(identifier: string): string {
+  if (!identifier || identifier.includes('\0')) throw new Error('SQL++ identifiers must be non-empty strings')
+  return `\`${identifier.replaceAll('`', '``')}\``
+}
+
+function quotePath(path: string): string {
+  return path.split('.').map(quoteIdentifier).join('.')
 }
 
 function isRecord(value: unknown): value is Record<string, JSONValue> {

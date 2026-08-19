@@ -6,12 +6,12 @@ This guide covers development setup for the Couchbase Vector Search MemoryStore 
 
 Use Capella when the Strands application is not running on the same machine as Couchbase or when hosted infrastructure must reach the database.
 
-1. Create or choose a Capella cluster with the Search service enabled.
+1. Create or choose a Capella cluster with the Index and Query services enabled.
 2. Allow the application IP address in the Capella networking settings.
-3. Create a database credential with access to the target bucket/scope/collection and Search index.
+3. Create a database credential with access to the target bucket/scope/collection and Hyperscale Vector Index.
 4. Create a bucket such as `strands_memory`.
 5. Create a scope and collection, or use `_default._default`.
-6. Create a Search index with a vector field matching your embedding dimensions.
+6. Create a Hyperscale Vector Index with a vector field matching your embedding dimensions.
 7. Set env vars from `.env.example` in the Python or TypeScript package.
 
 ## Local Couchbase Server
@@ -36,11 +36,14 @@ export COUCHBASE_PASSWORD=********
 export COUCHBASE_BUCKET=strands_memory
 export COUCHBASE_SCOPE=_default
 export COUCHBASE_COLLECTION=_default
-export COUCHBASE_SEARCH_INDEX=strands-memory-index
+export COUCHBASE_VECTOR_BACKEND=hyperscale
+export COUCHBASE_DISTANCE_METRIC=L2_SQUARED
+# Only needed for legacy Search-service vector indexes:
+export COUCHBASE_SEARCH_INDEX=strands-memory-search-index
 export COUCHBASE_NAMESPACE=dev
 ```
 
-## Search index requirements
+## Hyperscale Vector Index requirements
 
 The connector writes documents with these default fields:
 
@@ -49,13 +52,23 @@ The connector writes documents with these default fields:
 - `metadata`: object
 - `namespace`: string
 
-Create an index that:
+Create a Hyperscale Vector Index with SQL++:
 
-- maps `embedding` as a vector field with the same dimensions as your embedding provider;
-- stores/includes `content`, `metadata`, and `namespace` so search results can be mapped back to Strands `MemoryEntry` values;
-- allows a namespace prefilter on `namespace`.
+```sql
+CREATE VECTOR INDEX `strands-memory-vector-index`
+ON `strands_memory`.`_default`.`_default` (`embedding` VECTOR)
+INCLUDE (`content`, `metadata`, `namespace`)
+USING GSI
+WITH {
+  "dimension": 3,
+  "similarity": "L2_SQUARED",
+  "description": "IVF,SQ8"
+};
+```
 
-Search indexing is asynchronous. After inserting documents, wait for the Search index to ingest them before expecting results.
+The `similarity` value must match `COUCHBASE_DISTANCE_METRIC`. Use a dimension matching your embedding model. The legacy Search-service vector backend is available only when `COUCHBASE_VECTOR_BACKEND=search`.
+
+Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`. For small local indexes, configure enough centroids-to-probe (`num_candidates` / `numCandidates`, default 8) to cover the trained centroids.
 
 ## Running live tests
 
@@ -75,4 +88,4 @@ export COUCHBASE_INTEGRATION_TESTS=1
 npm test -- test/integration-live.test.ts
 ```
 
-If live tests fail with no hits after a successful write, first verify the Search index exists, is not paused, has indexed the expected documents, and maps the vector dimensions correctly.
+If live tests fail with no hits after a successful write, first verify the Hyperscale Vector Index exists, its `similarity` matches `COUCHBASE_DISTANCE_METRIC`, its dimension matches your embeddings, and `num_candidates` / `numCandidates` probes enough centroids for the test data.

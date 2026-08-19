@@ -23,7 +23,7 @@ async function waitForSearchHit(search: () => Promise<boolean>, timeoutMs = 20_0
 }
 
 describe.skipIf(!hasLiveEnv)('live Couchbase integration', () => {
-  it('adds and searches through Couchbase Vector Search', async () => {
+  it('adds and searches through Couchbase Hyperscale Vector Search', async () => {
     const store = new CouchbaseMemoryStore({
       name: 'cb-live',
       embeddingProvider,
@@ -34,7 +34,7 @@ describe.skipIf(!hasLiveEnv)('live Couchbase integration', () => {
       bucketName: process.env.COUCHBASE_BUCKET ?? 'strands_memory',
       scopeName: process.env.COUCHBASE_SCOPE ?? '_default',
       collectionName: process.env.COUCHBASE_COLLECTION ?? '_default',
-      searchIndexName: process.env.COUCHBASE_SEARCH_INDEX ?? 'strands-memory-index',
+      searchIndexName: process.env.COUCHBASE_SEARCH_INDEX ?? 'strands-memory-search-index',
       namespace: process.env.COUCHBASE_NAMESPACE ?? 'vitest',
     })
     try {

@@ -26,7 +26,7 @@ store = CouchbaseMemoryStore(
     username="Administrator",
     password="password",
     bucket_name="strands_memory",
-    search_index_name="strands-memory-index",
+    distance_metric="L2_SQUARED",
     dimensions=3,
     embedding_provider=Embeddings(),
     writable=True,
@@ -45,4 +45,4 @@ pytest
 python -m build
 ```
 
-Live integration tests are skipped unless `COUCHBASE_INTEGRATION_TESTS=1` and the Couchbase env vars in `.env.example` point at a cluster with a compatible Search index.
+Live integration tests are skipped unless `COUCHBASE_INTEGRATION_TESTS=1` and the Couchbase env vars in `.env.example` point at a cluster with a compatible Hyperscale Vector Index.

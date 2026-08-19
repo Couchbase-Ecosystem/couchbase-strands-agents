@@ -3,10 +3,24 @@ import { describe, expect, it, vi } from 'vitest'
 const fakeCollection = {
   upsert: vi.fn(async () => undefined),
 }
+const fakeScope = {
+  query: vi.fn(async () => ({
+    rows: [
+      {
+        id: 'memory-1',
+        content: 'User prefers dark-mode dashboards.',
+        metadata: { category: 'preference' },
+        namespace_value: 'default',
+        distance: 0.12,
+      },
+    ],
+  })),
+  search: vi.fn(),
+}
 const fakeCluster = {
   bucket: vi.fn(() => ({
-    defaultScope: vi.fn(() => ({ search: vi.fn() })),
-    scope: vi.fn(() => ({ collection: vi.fn(() => fakeCollection), search: vi.fn() })),
+    defaultScope: vi.fn(() => fakeScope),
+    scope: vi.fn(() => fakeScope),
     defaultCollection: vi.fn(() => fakeCollection),
   })),
   close: vi.fn(async () => undefined),
@@ -19,14 +33,15 @@ const clusterConstructor = vi.fn(() => {
 vi.mock('couchbase', () => ({
   connect,
   Cluster: clusterConstructor,
+  QueryScanConsistency: { RequestPlus: 'request_plus' },
   SearchQuery: { match: vi.fn() },
   VectorQuery: { create: vi.fn() },
   VectorSearch: { fromVectorQuery: vi.fn() },
   SearchRequest: { create: vi.fn() },
 }))
 
-describe('CouchbaseSdkBackend connection lifecycle', () => {
-  it('connects lazily with couchbase.connect before the first operation', async () => {
+describe('CouchbaseSdkBackend', () => {
+  it('connects lazily and queries Hyperscale Vector Indexes through SQL++ by default', async () => {
     const { CouchbaseSdkBackend } = await import('../src/index.js')
     const backend = new CouchbaseSdkBackend({
       connectionString: 'couchbase://example.com',
@@ -49,14 +64,36 @@ describe('CouchbaseSdkBackend connection lifecycle', () => {
       updated_at: '2026-08-19T00:00:00Z',
     })
 
+    const hits = await backend.vectorSearch({
+      searchIndexName: 'legacy-search-index',
+      vectorBackend: 'hyperscale',
+      distanceMetric: 'EUCLIDEAN',
+      vectorField: 'embedding',
+      queryVector: [1, 0, 0],
+      limit: 3,
+      namespace: 'default',
+      namespaceField: 'namespace',
+      contentField: 'content',
+      metadataField: 'metadata',
+    })
+
     expect(connect).toHaveBeenCalledWith('couchbase://example.com', {
       username: 'Administrator',
       password: 'password',
     })
-    expect(fakeCollection.upsert).toHaveBeenCalledWith(
-      'memory-1',
-      expect.objectContaining({ content: 'hello', namespace: 'default' })
+    expect(fakeCollection.upsert).toHaveBeenCalledWith('memory-1', expect.objectContaining({ content: 'hello' }))
+    expect(fakeScope.query).toHaveBeenCalledWith(
+      expect.stringContaining('APPROX_VECTOR_DISTANCE'),
+      expect.objectContaining({
+        parameters: { query_vector: [1, 0, 0], namespace: 'default' },
+        scanConsistency: 'request_plus',
+      })
     )
+    const queryCalls = fakeScope.query.mock.calls as unknown as [string, unknown][]
+    const queryStatement = queryCalls[0]?.[0] ?? ''
+    expect(queryStatement).toContain("'EUCLIDEAN'")
+    expect(queryStatement).toContain('LIMIT 3')
+    expect(hits[0]).toMatchObject({ id: 'memory-1', score: 0.12, content: 'User prefers dark-mode dashboards.' })
 
     await backend.close()
     expect(fakeCluster.close).toHaveBeenCalled()

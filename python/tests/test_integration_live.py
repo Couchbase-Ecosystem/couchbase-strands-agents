@@ -46,7 +46,7 @@ async def test_live_couchbase_add_and_search_round_trip() -> None:
         bucket_name=os.getenv("COUCHBASE_BUCKET", "strands_memory"),
         scope_name=os.getenv("COUCHBASE_SCOPE", "_default"),
         collection_name=os.getenv("COUCHBASE_COLLECTION", "_default"),
-        search_index_name=os.getenv("COUCHBASE_SEARCH_INDEX", "strands-memory-index"),
+        search_index_name=os.getenv("COUCHBASE_SEARCH_INDEX", "strands-memory-search-index"),
         namespace=os.getenv("COUCHBASE_NAMESPACE", "pytest"),
     )
     try:
