@@ -9,7 +9,7 @@
 - Docs/examples: root README for end users, language-specific READMEs, `docs/`, `python/examples`, and `typescript/examples`.
 - Release/package locations: `python/pyproject.toml` for future PyPI release; `typescript/package.json` for future npm release.
 - Open related issues or PRs: none found in this empty repo.
-- Risks: Couchbase Hyperscale Vector Indexes are the preferred default; Search-service vector indexes are kept as a legacy fallback. Index definitions remain deployment- and dimension-specific, so the connector validates/uses an existing index instead of silently creating a wrong one.
+- Risks: Couchbase Hyperscale Vector Indexes are the preferred default; Search-service vector indexes are kept as an optional fallback. Index definitions remain deployment- and dimension-specific, so the connector validates/uses an existing index instead of silently creating a wrong one.
 
 # Integration Research
 
@@ -34,9 +34,7 @@ Sources checked:
 
 | Reference | Why relevant | Key API/config patterns | Test/docs patterns |
 | --- | --- | --- | --- |
-| Strands Dakera MemoryStore docs | Independent MemoryStore package | `DakeraMemoryStore` with `MemoryManager(stores=[store])`, `writable=True`, `extraction=True` | Installable package docs with MemoryManager snippet |
-| Strands tools MongoDB memory | Vector-backed Strands memory tool | Stores content, embedding, namespace, metadata; validates tenant namespace; uses vector search | Extensive env-var configuration and error handling |
-| Strands tools Elasticsearch memory | Vector-backed Strands memory tool | Uses content/embedding/namespace/metadata fields and max results | Documents single-tenant env flow and bound multi-tenant class |
+| Strands MemoryStore examples | Independent MemoryStore packages | `MemoryManager(stores=[store])`, `writable=True`, `extraction=True` | Installable package docs with MemoryManager snippets |
 | Strands extension-template | Official extension package template | Sibling Python/TypeScript packages, MemoryStore skeletons, per-language CI | Hatch/pytest/ruff/mypy and npm/vitest/tsc/eslint |
 
 ## Existing Couchbase References
@@ -62,7 +60,7 @@ Sources checked:
 | CRUD/KV | `add` must persist memories | Couchbase collections support upsert/get/remove | SDK collection examples | Use KV `upsert` for memory documents |
 | Query/filtering | Isolate tenants/namespaces | SQL++ `WHERE` filters with fields included in the Hyperscale Vector Index | Couchbase Hyperscale docs and live Docker tests | Filter by configurable namespace field |
 | Index management | Vector search requires index | Couchbase supports Hyperscale Vector Indexes via `CREATE VECTOR INDEX`; Search Vector Indexes remain a fallback | Couchbase Hyperscale docs | Do not auto-create; document setup and fail clearly if missing |
-| Search/vector search | `search` must return relevant entries | Couchbase Hyperscale Vector Index via SQL++ `APPROX_VECTOR_DISTANCE` | Couchbase docs and live Docker tests | Use Query service by default; legacy Search-service backend optional |
+| Search/vector search | `search` must return relevant entries | Couchbase Hyperscale Vector Index via SQL++ `APPROX_VECTOR_DISTANCE` | Couchbase docs and live Docker tests | Use Query service by default; Search-service backend optional |
 | Transactions/durability | Not required by Strands MemoryStore | Couchbase supports durability options, not needed for baseline | SDK capability | Keep baseline simple; document advanced users can extend |
 | Streaming/change events | Not required | Couchbase DCP/eventing exists but not needed | Product capability | Out of scope |
 | Local test environment | Required where possible | Couchbase Docker can run locally; Hyperscale Vector Index setup needs Query and Index services plus a pre-created vector index | Pre-pulled local image and SDK docs | Add gated integration tests and setup docs; run unit/build in CI by default |
@@ -89,4 +87,4 @@ Implementation path:
 
 - Owned Couchbase example/extension repository with separate Python and TypeScript packages.
 - Implement `search`, `add`, and raw `add_messages`/`addMessages` for completeness.
-- Require a pre-created Couchbase Hyperscale Vector Index by default and document legacy Search-service setup separately.
+- Require a pre-created Couchbase Hyperscale Vector Index by default and document Search-service setup separately.

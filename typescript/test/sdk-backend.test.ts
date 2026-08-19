@@ -65,7 +65,7 @@ describe('CouchbaseSdkBackend', () => {
     })
 
     const hits = await backend.vectorSearch({
-      searchIndexName: 'legacy-search-index',
+      searchIndexName: 'search-index',
       vectorBackend: 'hyperscale',
       distanceMetric: 'EUCLIDEAN',
       vectorField: 'embedding',

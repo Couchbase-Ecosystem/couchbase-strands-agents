@@ -7,8 +7,8 @@ This connector supports two Couchbase vector-search execution paths. The default
 | Connector backend | Couchbase index/query path | Services | Best fit | Notes |
 | --- | --- | --- | --- | --- |
 | `hyperscale` (default) | Hyperscale Vector Index queried with SQL++ `APPROX_VECTOR_DISTANCE(...)` | Query + Index | Pure vector similarity search, content discovery, recommendations, and large vector datasets | Couchbase docs describe Hyperscale as the highest-performance vector index type and recommend testing it before other index types. |
-| Composite Vector Index | SQL++ `APPROX_VECTOR_DISTANCE(...)` over a composite GSI vector index | Query + Index | Queries where scalar predicates should significantly reduce the candidate set before vector comparison | This connector's `hyperscale` backend also uses SQL++; a Composite Vector Index can be used when its key shape matches the generated query and your scalar filters/index fields. |
-| `search` (legacy fallback) | Search Vector Index queried with SDK `VectorQuery` / `VectorSearch` / `scope.search(...)` | Search | Existing deployments that already use Search Vector Indexes, or hybrid full-text/geospatial use cases | Must be opted into with `COUCHBASE_VECTOR_BACKEND=search` or constructor config. |
+| Composite Vector Index | SQL++ `APPROX_VECTOR_DISTANCE(...)` over a composite GSI vector index | Query + Index | Queries where scalar predicates should significantly reduce the candidate set before vector comparison | This connector's `hyperscale` backend also uses SQL++; advanced users can evaluate a Composite Vector Index when the generated query and indexed fields match their filtering needs. |
+| `search` (optional fallback) | Search Vector Index queried with SDK `VectorQuery` / `VectorSearch` / `scope.search(...)` | Search | Deployments that use Search Vector Indexes, or hybrid full-text/geospatial use cases | Must be opted into with `COUCHBASE_VECTOR_BACKEND=search` or constructor config. |
 
 Couchbase's "Choose the Right Vector Index" documentation lists the three vector index families as Hyperscale Vector Indexes, Composite Vector Indexes, and Search Vector Indexes. It describes Hyperscale as specifically designed for vector search, Composite as combining scalar filtering with a vector column, and Search Vector Indexes as the option for hybrid vector + full-text/geospatial search.
 
@@ -79,7 +79,7 @@ const store = new CouchbaseMemoryStore({
 
 ## Search-service fallback
 
-Set the backend to `search` only when you want the legacy Search-service vector path:
+Set the backend to `search` only when you want the Search-service vector path:
 
 ```bash
 export COUCHBASE_VECTOR_BACKEND=search

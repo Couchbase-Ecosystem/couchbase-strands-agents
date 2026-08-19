@@ -38,7 +38,7 @@ export COUCHBASE_SCOPE=_default
 export COUCHBASE_COLLECTION=_default
 export COUCHBASE_VECTOR_BACKEND=hyperscale
 export COUCHBASE_DISTANCE_METRIC=L2_SQUARED
-# Only needed for legacy Search-service vector indexes:
+# Only needed for Search-service vector indexes:
 export COUCHBASE_SEARCH_INDEX=strands-memory-search-index
 export COUCHBASE_NAMESPACE=dev
 ```
@@ -66,13 +66,13 @@ WITH {
 };
 ```
 
-The `similarity` value must match `COUCHBASE_DISTANCE_METRIC`. Use a dimension matching your embedding model. The legacy Search-service vector backend is available only when `COUCHBASE_VECTOR_BACKEND=search`.
+The `similarity` value must match `COUCHBASE_DISTANCE_METRIC`. Use a dimension matching your embedding model. The Search-service vector backend is available only when `COUCHBASE_VECTOR_BACKEND=search`.
 
 Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`. For small local indexes, configure enough centroids-to-probe (`num_candidates` / `numCandidates`, default 8) to cover the trained centroids.
 
 ## Related documentation
 
-- `vector-backends.md` explains when to use Hyperscale, Composite, or legacy Search-service vector indexes.
+- `vector-backends.md` explains when to use Hyperscale, Composite, or Search-service vector indexes.
 - `memorymanager-usage.md` explains Strands `MemoryManager` recall, injection, extraction, and write semantics.
 - `security-and-multitenancy.md` explains safe namespace and credential handling.
 

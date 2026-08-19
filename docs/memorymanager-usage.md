@@ -1,6 +1,6 @@
 # Strands MemoryManager usage
 
-`CouchbaseMemoryStore` plugs into the native Strands `MemoryManager` API. It is not a standalone direct tool like `mongodb_memory` or `elasticsearch_memory` from `strands-agents-tools`.
+`CouchbaseMemoryStore` plugs into the native Strands `MemoryManager` API. It is a `MemoryStore` implementation that applications construct in trusted code and attach to a `MemoryManager`.
 
 ## What Strands does with the store
 
@@ -72,7 +72,7 @@ In this mode, the model can ask Strands to save content, but Couchbase connectio
 
 Direct calls to `store.search(query, options)` return Strands `MemoryEntry` values ordered by Couchbase vector distance/relevance.
 
-For the default Hyperscale backend, `score` is the SQL++ `APPROX_VECTOR_DISTANCE` result. Lower distances are closer matches. For the legacy Search-service backend, `score` comes from Couchbase Search rows and follows Search-service scoring semantics.
+For the default Hyperscale backend, `score` is the SQL++ `APPROX_VECTOR_DISTANCE` result. Lower distances are closer matches. For the optional Search-service backend, `score` comes from Couchbase Search rows and follows Search-service scoring semantics.
 
 Example returned entry:
 
@@ -114,7 +114,7 @@ Stored document shape:
 
 ## Flushing and shutdown
 
-Strands extraction writes can run in the background. The Strands Memory documentation recommends flushing pending writes before shutdown when using async/long-running agent flows so recent turns are not lost. Use the `MemoryManager` flush method where your SDK/runtime exposes it.
+Strands extraction writes can run in the background. The Strands Memory documentation describes flushing pending writes before shutdown for async/long-running agent flows so recent turns are not lost. Use the `MemoryManager` flush method where your SDK/runtime exposes it.
 
 ## Common errors
 

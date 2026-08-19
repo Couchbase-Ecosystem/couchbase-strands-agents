@@ -68,13 +68,13 @@ WITH {
 };
 ```
 
-The connector also supports the legacy Search-service vector API by setting `COUCHBASE_VECTOR_BACKEND=search` (or `vector_backend="search"` / `vectorBackend: "search"`) and configuring a Search Vector Index.
+The connector also supports the Search-service vector API by setting `COUCHBASE_VECTOR_BACKEND=search` (or `vector_backend="search"` / `vectorBackend: "search"`) and configuring a Search Vector Index.
 
 See `docs/couchbase-setup.md` for local and Capella setup notes.
 
 ## More documentation
 
-- `docs/vector-backends.md` explains Hyperscale, Composite, and legacy Search-service vector paths, including `APPROX_VECTOR_DISTANCE` tuning.
+- `docs/vector-backends.md` explains Hyperscale, Composite, and Search-service vector paths, including `APPROX_VECTOR_DISTANCE` tuning.
 - `docs/memorymanager-usage.md` explains how the store is used by Strands `MemoryManager`, including recall, injection, extraction, returned metadata, and write semantics.
 - `docs/security-and-multitenancy.md` covers tenant namespace patterns, credential boundaries, and prompt-injection considerations.
 - `docs/couchbase-setup.md` covers Capella/local Couchbase setup and live test prerequisites.
@@ -192,7 +192,7 @@ Use constructor arguments or environment variables. Constructor arguments take p
 | Collection | `COUCHBASE_COLLECTION` | `COUCHBASE_COLLECTION` | `_default` |
 | Vector backend | `COUCHBASE_VECTOR_BACKEND` | `COUCHBASE_VECTOR_BACKEND` | `hyperscale` |
 | Distance metric | `COUCHBASE_DISTANCE_METRIC` | `COUCHBASE_DISTANCE_METRIC` | `L2_SQUARED` |
-| Legacy Search index | `COUCHBASE_SEARCH_INDEX` | `COUCHBASE_SEARCH_INDEX` | `strands-memory-search-index` |
+| Search-service index | `COUCHBASE_SEARCH_INDEX` | `COUCHBASE_SEARCH_INDEX` | `strands-memory-search-index` |
 | Namespace | `COUCHBASE_NAMESPACE` | `COUCHBASE_NAMESPACE` | `default` |
 
 ## Developer workflow
