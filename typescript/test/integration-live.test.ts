@@ -11,6 +11,17 @@ const embeddingProvider = {
   },
 }
 
+async function waitForSearchHit(search: () => Promise<boolean>, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let found = false
+  while (Date.now() < deadline) {
+    found = await search()
+    if (found) return
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  expect(found, 'Couchbase Search did not return the inserted memory before the timeout').toBe(true)
+}
+
 describe.skipIf(!hasLiveEnv)('live Couchbase integration', () => {
   it('adds and searches through Couchbase Vector Search', async () => {
     const store = new CouchbaseMemoryStore({
@@ -29,8 +40,10 @@ describe.skipIf(!hasLiveEnv)('live Couchbase integration', () => {
     try {
       const key = await store.add('live integration memory prefers dark mode', { test: 'live' })
       expect(key).toBeTruthy()
-      const results = await store.search('dark mode', { maxSearchResults: 3 })
-      expect(results.some((entry) => entry.content.includes('dark mode'))).toBe(true)
+      await waitForSearchHit(async () => {
+        const results = await store.search('dark mode', { maxSearchResults: 3 })
+        return results.some((entry) => entry.content.includes('dark mode'))
+      })
     } finally {
       await store.close()
     }
