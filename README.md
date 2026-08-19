@@ -72,6 +72,14 @@ The connector also supports the legacy Search-service vector API by setting `COU
 
 See `docs/couchbase-setup.md` for local and Capella setup notes.
 
+## More documentation
+
+- `docs/vector-backends.md` explains Hyperscale, Composite, and legacy Search-service vector paths, including `APPROX_VECTOR_DISTANCE` tuning.
+- `docs/memorymanager-usage.md` explains how the store is used by Strands `MemoryManager`, including recall, injection, extraction, returned metadata, and write semantics.
+- `docs/security-and-multitenancy.md` covers tenant namespace patterns, credential boundaries, and prompt-injection considerations.
+- `docs/couchbase-setup.md` covers Capella/local Couchbase setup and live test prerequisites.
+- `docs/tutorial.md` is a runnable Python + TypeScript walkthrough.
+
 ## Python quickstart
 
 Install from source until the package is published:

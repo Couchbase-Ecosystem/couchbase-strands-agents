@@ -2,7 +2,7 @@
 
 - Target repo: `couchbase-examples/couchbase-strands-agents`.
 - Initial state: repository existed but was empty and private.
-- Integration type: Strands Agents `MemoryStore` extension packages backed by Couchbase Vector Search.
+- Integration type: Strands Agents `MemoryStore` extension packages backed by Couchbase Hyperscale Vector Search.
 - Ownership strategy: owned Couchbase example/extension repository. The task explicitly requires separate extension packages, not Strands core changes.
 - Existing integration patterns: Strands extension-template has sibling `python/` and `typescript/` packages, CI per ecosystem, and skeleton MemoryStore components. Strands docs list community memory stores as independent packages.
 - Build/test commands: Python uses hatch/ruff/mypy/pytest/build. TypeScript uses npm/tsc/eslint/prettier/vitest/npm pack.
@@ -65,7 +65,7 @@ Sources checked:
 | Search/vector search | `search` must return relevant entries | Couchbase Hyperscale Vector Index via SQL++ `APPROX_VECTOR_DISTANCE` | Couchbase docs and live Docker tests | Use Query service by default; legacy Search-service backend optional |
 | Transactions/durability | Not required by Strands MemoryStore | Couchbase supports durability options, not needed for baseline | SDK capability | Keep baseline simple; document advanced users can extend |
 | Streaming/change events | Not required | Couchbase DCP/eventing exists but not needed | Product capability | Out of scope |
-| Local test environment | Required where possible | Couchbase Docker can run locally, but vector Search index setup is heavier than unit CI | Pre-pulled local image and SDK docs | Add gated integration tests and setup docs; run unit/build in CI by default |
+| Local test environment | Required where possible | Couchbase Docker can run locally; Hyperscale Vector Index setup needs Query and Index services plus a pre-created vector index | Pre-pulled local image and SDK docs | Add gated integration tests and setup docs; run unit/build in CI by default |
 
 # Feasibility Decision
 

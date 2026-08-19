@@ -1,4 +1,4 @@
-# Tutorial: Strands memory backed by Couchbase Vector Search
+# Tutorial: Strands memory backed by Couchbase Hyperscale Vector Search
 
 This tutorial runs the Python and TypeScript packages against the same Couchbase memory collection.
 

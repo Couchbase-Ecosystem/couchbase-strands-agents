@@ -70,6 +70,12 @@ The `similarity` value must match `COUCHBASE_DISTANCE_METRIC`. Use a dimension m
 
 Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`. For small local indexes, configure enough centroids-to-probe (`num_candidates` / `numCandidates`, default 8) to cover the trained centroids.
 
+## Related documentation
+
+- `vector-backends.md` explains when to use Hyperscale, Composite, or legacy Search-service vector indexes.
+- `memorymanager-usage.md` explains Strands `MemoryManager` recall, injection, extraction, and write semantics.
+- `security-and-multitenancy.md` explains safe namespace and credential handling.
+
 ## Running live tests
 
 Python:

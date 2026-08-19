@@ -19,7 +19,7 @@ class DeterministicEmbeddingProvider:
 
 
 async def wait_for_search_hit(search: Callable[[], Awaitable[bool]], timeout_seconds: float = 20.0) -> None:
-    """Poll because Couchbase Search indexing is asynchronous after KV writes."""
+    """Poll because vector indexes and approximate search may not expose fresh writes immediately."""
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     last_result = False
     while asyncio.get_running_loop().time() < deadline:

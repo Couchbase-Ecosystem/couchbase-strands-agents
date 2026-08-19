@@ -1,4 +1,4 @@
-"""Strands MemoryStore implementation backed by Couchbase Vector Search."""
+"""Strands MemoryStore implementation backed by Couchbase Hyperscale Vector Search."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from strands.types.content import Message
 from typing_extensions import Unpack
 
 DEFAULT_NAME = "couchbase"
-DEFAULT_DESCRIPTION = "Long-term semantic memory stored in Couchbase Vector Search."
+DEFAULT_DESCRIPTION = "Long-term semantic memory stored in Couchbase Hyperscale Vector Search."
 DEFAULT_CONNECTION_STRING = "couchbase://localhost"
 DEFAULT_BUCKET = "strands_memory"
 DEFAULT_SCOPE = "_default"
@@ -335,7 +335,7 @@ class CouchbaseSdkBackend:
 
 
 class CouchbaseMemoryStore(MemoryStore):
-    """Couchbase Vector Search implementation of the Strands MemoryStore protocol."""
+    """Couchbase Hyperscale Vector Search implementation of the Strands MemoryStore protocol."""
 
     name: str
     description: str | None
