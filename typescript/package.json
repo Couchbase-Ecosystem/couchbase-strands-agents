@@ -1,7 +1,7 @@
 {
   "name": "@couchbase-examples/strands-couchbase-memory",
   "version": "0.1.0",
-  "description": "Couchbase Vector Search MemoryStore extension for Strands Agents",
+  "description": "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -50,13 +50,13 @@
     "node": ">=20.0.0"
   },
   "peerDependencies": {
-    "@strands-agents/sdk": ">=1.0.0 <2.0.0"
+    "@strands-agents/sdk": ">=1.13.0 <2.0.0"
   },
   "dependencies": {
-    "couchbase": "^4.5.0"
+    "couchbase": "^4.7.1"
   },
   "devDependencies": {
-    "@strands-agents/sdk": "^1.10.0",
+    "@strands-agents/sdk": "^1.13.0",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",

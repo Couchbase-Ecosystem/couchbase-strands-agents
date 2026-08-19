@@ -1,0 +1,46 @@
+name: Release - Python
+
+on:
+  push:
+    tags:
+      - 'python-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing python-v* tag to publish from; defaults to current ref'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-python-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: python
+
+jobs:
+  publish:
+    name: Build and publish Python package
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade build hatch twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
