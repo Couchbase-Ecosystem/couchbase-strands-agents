@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -14,6 +16,18 @@ class DeterministicEmbeddingProvider:
         vector = [0.0, 0.0, 0.0]
         vector[len(text) % 3] = 1.0
         return vector
+
+
+async def wait_for_search_hit(search: Callable[[], Awaitable[bool]], timeout_seconds: float = 20.0) -> None:
+    """Poll because Couchbase Search indexing is asynchronous after KV writes."""
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    last_result = False
+    while asyncio.get_running_loop().time() < deadline:
+        last_result = await search()
+        if last_result:
+            return
+        await asyncio.sleep(1.0)
+    assert last_result, "Couchbase Search did not return the inserted memory before the timeout"
 
 
 @pytest.mark.skipif(
@@ -38,7 +52,11 @@ async def test_live_couchbase_add_and_search_round_trip() -> None:
     try:
         key = await store.add("live integration memory prefers dark mode", {"test": "live"})
         assert key
-        results = await store.search("dark mode", {"max_search_results": 3})
-        assert any("dark mode" in entry.content for entry in results)
+
+        async def has_inserted_memory() -> bool:
+            results = await store.search("dark mode", {"max_search_results": 3})
+            return any("dark mode" in entry.content for entry in results)
+
+        await wait_for_search_hit(has_inserted_memory)
     finally:
         await store.close()

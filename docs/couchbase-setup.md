@@ -31,7 +31,8 @@ Example environment:
 ```bash
 export COUCHBASE_CONNECTION_STRING=couchbase://localhost
 export COUCHBASE_USERNAME=Administrator
-export COUCHBASE_PASSWORD=password
+# Replace the asterisks with your local or Capella database password.
+export COUCHBASE_PASSWORD=********
 export COUCHBASE_BUCKET=strands_memory
 export COUCHBASE_SCOPE=_default
 export COUCHBASE_COLLECTION=_default

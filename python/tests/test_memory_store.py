@@ -117,10 +117,12 @@ async def test_add_messages_preserves_role_metadata() -> None:
     backend = FakeBackend()
     store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
 
-    keys = await store.add_messages([
-        {"role": "user", "content": [{"text": "Remember my timezone is UTC."}]},
-        {"role": "assistant", "content": [{"text": "Noted."}]},
-    ])
+    keys = await store.add_messages(
+        [
+            {"role": "user", "content": [{"text": "Remember my timezone is UTC."}]},
+            {"role": "assistant", "content": [{"text": "Noted."}]},
+        ]
+    )
 
     assert len(keys) == 2
     stored = list(backend.documents.values())
