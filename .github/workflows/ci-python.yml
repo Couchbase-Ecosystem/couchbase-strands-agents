@@ -2,7 +2,7 @@ name: CI - Python
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/couchbase-strands-memory-store ]
     paths:
       - 'python/**'
       - '.github/workflows/ci-python.yml'

@@ -2,7 +2,7 @@ name: CI - TypeScript
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/couchbase-strands-memory-store ]
     paths:
       - 'typescript/**'
       - '.github/workflows/ci-typescript.yml'

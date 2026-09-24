@@ -22,8 +22,8 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "couchbase>=4.6.2,<5.0.0",
-  "strands-agents>=1.52.0",
+  "couchbase>=4.6.3,<5.0.0",
+  "strands-agents>=1.57.0",
   "typing-extensions>=4.10.0",
 ]
 
@@ -35,12 +35,12 @@ Issues = "https://github.com/couchbase-examples/couchbase-strands-agents/issues"
 
 [project.optional-dependencies]
 dev = [
-  "build>=1.2.0,<2.0.0",
-  "hatch>=1.14.0,<2.0.0",
-  "mypy>=1.15.0,<2.0.0",
-  "pytest>=8.0.0,<9.0.0",
-  "pytest-asyncio>=0.25.0,<1.0.0",
-  "ruff>=0.11.0,<1.0.0",
+  "build>=1.6.1,<2.0.0",
+  "hatch>=1.18.1,<2.0.0",
+  "mypy>=2.3.1,<3.0.0",
+  "pytest>=9.1.1,<10.0.0",
+  "pytest-asyncio>=1.4.0,<2.0.0",
+  "ruff>=0.16.8,<1.0.0",
 ]
 
 [tool.hatch.version]
@@ -56,11 +56,11 @@ packages = ["src/strands_couchbase_memory"]
 
 [tool.hatch.envs.default]
 dependencies = [
-  "build>=1.2.0,<2.0.0",
-  "mypy>=1.15.0,<2.0.0",
-  "pytest>=8.0.0,<9.0.0",
-  "pytest-asyncio>=0.25.0,<1.0.0",
-  "ruff>=0.11.0,<1.0.0",
+  "build>=1.6.1,<2.0.0",
+  "mypy>=2.3.1,<3.0.0",
+  "pytest>=9.1.1,<10.0.0",
+  "pytest-asyncio>=1.4.0,<2.0.0",
+  "ruff>=0.16.8,<1.0.0",
 ]
 
 [tool.hatch.envs.default.scripts]
