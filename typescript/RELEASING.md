@@ -18,7 +18,7 @@ npm only lets you add a trusted publisher to a package that already exists, so `
 
    ```bash
    cd typescript
-   npm ci && npm run build
+   npm ci
    npm run smoke:package
    npm publish --access public
    ```
