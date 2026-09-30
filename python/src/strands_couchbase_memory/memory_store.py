@@ -17,9 +17,8 @@ from couchbase.cluster import Cluster, QueryScanConsistency
 from couchbase.collection import Collection
 from couchbase.options import ClusterOptions, QueryOptions, SearchOptions
 from couchbase.vector_search import VectorQuery, VectorSearch
-from strands.memory import AddMessagesContext, MemoryEntry, MemoryStore, MemoryStoreConfig
+from strands.memory import MemoryEntry, MemoryStore, MemoryStoreConfig
 from strands.memory import SearchOptions as StrandsSearchOptions
-from strands.types.content import Message
 from typing_extensions import Unpack
 
 DEFAULT_NAME = "couchbase"
@@ -335,7 +334,13 @@ class CouchbaseSdkBackend:
 
 
 class CouchbaseMemoryStore(MemoryStore):
-    """Couchbase Hyperscale Vector Search implementation of the Strands MemoryStore protocol."""
+    """Couchbase Hyperscale Vector Search implementation of the Strands MemoryStore protocol.
+
+    The store deliberately does not implement ``add_messages``. Strands treats any
+    store with ``add_messages`` as doing server-side extraction and skips its
+    ``ModelExtractor``, which would save every raw turn. Leaving it out makes
+    ``extraction=True`` distill facts with the agent's model and store them via ``add``.
+    """
 
     name: str
     description: str | None
@@ -436,26 +441,6 @@ class CouchbaseMemoryStore(MemoryStore):
         await self._backend.upsert(key, document)
         return key
 
-    async def add_messages(self, messages: list[Message], context: AddMessagesContext | None = None) -> list[str]:
-        """Store raw conversation turns as discrete memory entries.
-
-        Vector databases do not do server-side extraction. This method preserves
-        role/content structure for callers that opt into raw message storage.
-        For model-distilled facts, configure Strands extraction to use `add`.
-        """
-        keys: list[str] = []
-        sequence_numbers = context.sequence_numbers if context else None
-        for index, message in enumerate(messages):
-            content = _message_to_text(message)
-            if not content:
-                continue
-            role = str(message.get("role", "unknown"))
-            metadata: JsonMap = {"role": role, "source": "strands.add_messages"}
-            if sequence_numbers and index < len(sequence_numbers):
-                metadata["sequence_number"] = sequence_numbers[index]
-            keys.append(await self.add(content, metadata))
-        return keys
-
     async def close(self) -> None:
         """Close backend resources."""
         await self._backend.close()
@@ -499,11 +484,3 @@ def _quote_identifier(identifier: str) -> str:
 def _quote_path(path: str) -> str:
     """Quote a dotted SQL++ field path such as metadata.category."""
     return ".".join(_quote_identifier(part) for part in path.split("."))
-
-
-def _message_to_text(message: Message) -> str:
-    parts: list[str] = []
-    for block in message.get("content", []):
-        if isinstance(block, dict) and isinstance(block.get("text"), str):
-            parts.append(block["text"])
-    return "\n".join(parts).strip()

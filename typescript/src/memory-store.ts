@@ -1,12 +1,10 @@
 import * as couchbase from 'couchbase'
 import type {
-  AddMessagesContext,
   ExtractionConfig,
   JSONValue,
   MemoryEntry,
   MemoryStore,
   MemoryStoreConfig,
-  MessageData,
   SearchOptions,
 } from '@strands-agents/sdk'
 
@@ -284,6 +282,13 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
   }
 }
 
+/**
+ * Couchbase Hyperscale Vector Search implementation of the Strands MemoryStore interface.
+ *
+ * The store deliberately does not implement `addMessages`. Strands treats any store with `addMessages` as
+ * doing server-side extraction and skips its `ModelExtractor`, which would save every raw turn. Leaving it
+ * out makes `extraction: true` distill facts with the agent's model and store them via `add`.
+ */
 export class CouchbaseMemoryStore implements MemoryStore {
   readonly name: string
   readonly description?: string
@@ -395,22 +400,6 @@ export class CouchbaseMemoryStore implements MemoryStore {
     return key
   }
 
-  async addMessages(messages: MessageData[], context?: AddMessagesContext): Promise<string[]> {
-    const keys: string[] = []
-    for (const [index, message] of messages.entries()) {
-      const content = messageToText(message)
-      if (!content) continue
-      const metadata: Record<string, JSONValue> = {
-        role: message.role ?? 'unknown',
-        source: 'strands.addMessages',
-      }
-      const sequenceNumber = context?.sequenceNumbers?.[index]
-      if (sequenceNumber !== undefined) metadata.sequence_number = sequenceNumber
-      keys.push(await this.add(content, metadata))
-    }
-    return keys
-  }
-
   async close(): Promise<void> {
     await this.backend.close()
   }
@@ -425,14 +414,6 @@ export class CouchbaseMemoryStore implements MemoryStore {
     }
     return vector
   }
-}
-
-function messageToText(message: MessageData): string {
-  return (message.content ?? [])
-    .map((block: any) => (typeof block?.text === 'string' ? block.text : ''))
-    .filter(Boolean)
-    .join('\n')
-    .trim()
 }
 
 function validateDistanceMetric(distanceMetric: string): string {

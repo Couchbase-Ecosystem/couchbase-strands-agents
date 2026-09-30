@@ -1,3 +1,4 @@
+import { MemoryManager, ModelExtractor } from '@strands-agents/sdk'
 import { describe, expect, it } from 'vitest'
 import { CouchbaseMemoryStore, type CouchbaseBackend, type MemoryDocument, type SearchHit } from '../src/index.js'
 
@@ -102,17 +103,18 @@ describe('CouchbaseMemoryStore', () => {
     await expect(store.add('hello')).rejects.toThrow('not writable')
   })
 
-  it('stores message role metadata', async () => {
-    const backend = new FakeBackend()
-    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
-    const keys = await store.addMessages([
-      { role: 'user', content: [{ text: 'Remember my timezone is UTC.' }] },
-      { role: 'assistant', content: [{ text: 'Noted.' }] },
-    ])
+  it('resolves extraction: true to a ModelExtractor', () => {
+    const store = new CouchbaseMemoryStore({
+      name: 'cb',
+      embeddingProvider,
+      backend: new FakeBackend(),
+      extraction: true,
+    })
+    const manager = new MemoryManager({ stores: [store] })
 
-    expect(keys).toHaveLength(2)
-    const docs = [...backend.documents.values()]
-    expect(docs[0]?.metadata.role).toBe('user')
-    expect(docs[1]?.metadata.role).toBe('assistant')
+    // Strands only distills facts client-side for stores without `addMessages`;
+    // otherwise raw turns are handed to the store as-is.
+    const [binding] = (manager as any)._extractionStores
+    expect(binding.config.extractor).toBeInstanceOf(ModelExtractor)
   })
 })

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from strands.memory import MemoryManager, ModelExtractor
 
 from strands_couchbase_memory import CouchbaseMemoryStore, MemoryDocument
 from strands_couchbase_memory.memory_store import SearchHit
@@ -114,19 +115,17 @@ async def test_non_writable_store_rejects_add() -> None:
         await store.add("hello")
 
 
-@pytest.mark.asyncio
-async def test_add_messages_preserves_role_metadata() -> None:
-    backend = FakeBackend()
-    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
-
-    keys = await store.add_messages(
-        [
-            {"role": "user", "content": [{"text": "Remember my timezone is UTC."}]},
-            {"role": "assistant", "content": [{"text": "Noted."}]},
-        ]
+def test_extraction_true_resolves_to_model_extractor() -> None:
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        backend=FakeBackend(),
+        extraction=True,
     )
 
-    assert len(keys) == 2
-    stored = list(backend.documents.values())
-    assert stored[0]["metadata"]["role"] == "user"
-    assert stored[1]["metadata"]["role"] == "assistant"
+    manager = MemoryManager(stores=[store])
+
+    # Strands only distills facts client-side for stores without `add_messages`;
+    # otherwise raw turns are handed to the store as-is.
+    [binding] = manager._extraction_stores
+    assert isinstance(binding.config.extractor, ModelExtractor)
