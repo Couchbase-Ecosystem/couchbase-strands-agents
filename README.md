@@ -240,12 +240,12 @@ Python package:
 
 TypeScript package:
 
-1. Configure repository secret `NPM_TOKEN` with publish access for `@couchbase-examples` and protect the GitHub environment `npm` as needed.
-2. Update `typescript/package.json` version.
-3. Tag a release such as `typescript-v0.1.0`.
-4. Pushing the tag runs the release workflow, validates the package, and publishes with `npm publish --access public`.
+1. Configure npm trusted publishing for `@couchbase-examples/strands-couchbase-memory` with GitHub organization `Couchbase-Ecosystem`, repository `couchbase-strands-agents`, workflow `release-typescript.yml` and environment `npm`. npm only lets you add a trusted publisher to a package that already exists, so the first version has to be published by a maintainer by hand; see [`typescript/RELEASING.md`](typescript/RELEASING.md).
+2. Update the `typescript/package.json` version and `typescript/CHANGELOG.md`.
+3. Tag a release such as `typescript-v0.1.0`. The tag must match the `package.json` version, or the workflow stops.
+4. Pushing the tag runs the release workflow: checks, live tests against Couchbase Server 8, a clean-project install of the packed tarball running the quickstart, `npm publish --dry-run`, then `npm publish --provenance --access public` over OIDC (no `NPM_TOKEN`).
 
-The release workflows can also be triggered manually with `workflow_dispatch` against an existing release tag.
+The release workflows can also be triggered manually with `workflow_dispatch` against an existing release tag. The TypeScript workflow defaults to `dry_run: true` when run manually, so it stops after `npm publish --dry-run`.
 
 ## Troubleshooting
 
