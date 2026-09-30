@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -11,7 +12,11 @@ from strands_couchbase_memory.memory_store import CouchbaseSdkBackend, SearchHit
 
 
 class FakeEmbeddingProvider:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
     async def embed(self, text: str) -> list[float]:
+        self.calls.append(text)
         if "bad" in text:
             return [1.0]
         return [float(len(text) % 3), 1.0, 0.5]
@@ -24,6 +29,9 @@ class FakeBackend:
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
         self.documents[key] = document
+
+    async def exists(self, key: str) -> bool:
+        return key in self.documents
 
     async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
         if key in self.documents:
@@ -81,6 +89,43 @@ async def test_add_deduplicates_identical_content_and_keeps_original() -> None:
     assert first.startswith("memory::default::")
     assert len(backend.documents) == 1
     assert backend.documents[first] == original
+    assert backend.documents[first]["metadata"] == {"source": "session-1"}
+
+
+@pytest.mark.asyncio
+async def test_add_derives_pinned_key_from_content() -> None:
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=FakeBackend())
+
+    key = await store.add("The user lives in Denver.")
+
+    # Must match the TypeScript test. A format change here breaks dedupe against existing documents.
+    assert key == "memory::default::e41780f3836366c4355c59adda79e297c41ea63d3c04bbc62a609ffd2bc5ac0a"
+
+
+@pytest.mark.asyncio
+async def test_add_skips_embedding_for_duplicate_content() -> None:
+    embedder = FakeEmbeddingProvider()
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=embedder, backend=FakeBackend())
+
+    await store.add("The user lives in Denver.")
+    await store.add("The user lives in Denver.")
+
+    assert embedder.calls == ["The user lives in Denver."]
+
+
+@pytest.mark.asyncio
+async def test_add_keeps_original_when_insert_races_after_exists_check() -> None:
+    class RacingBackend(FakeBackend):
+        async def exists(self, key: str) -> bool:
+            return False
+
+    backend = RacingBackend()
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
+
+    first = await store.add("The user lives in Denver.", {"source": "session-1"})
+    second = await store.add("The user lives in Denver.", {"source": "session-2"})
+
+    assert second == first
     assert backend.documents[first]["metadata"] == {"source": "session-1"}
 
 
@@ -198,17 +243,23 @@ def test_extraction_true_resolves_to_model_extractor() -> None:
     assert isinstance(binding.config.extractor, ModelExtractor)
 
 
-@pytest.mark.asyncio
-async def test_sdk_backend_insert_if_absent_reports_existing_key() -> None:
-    class FakeCollection:
-        def __init__(self) -> None:
-            self.documents: dict[str, Any] = {}
+class FakeCollection:
+    def __init__(self, insert_error: Exception | None = None) -> None:
+        self.documents: dict[str, Any] = {}
+        self.insert_error = insert_error
 
-        def insert(self, key: str, document: Any) -> None:
-            if key in self.documents:
-                raise DocumentExistsException()
-            self.documents[key] = document
+    def insert(self, key: str, document: Any) -> None:
+        if self.insert_error is not None:
+            raise self.insert_error
+        if key in self.documents:
+            raise DocumentExistsException()
+        self.documents[key] = document
 
+    def exists(self, key: str) -> Any:
+        return SimpleNamespace(exists=key in self.documents)
+
+
+def make_sdk_backend(collection: FakeCollection) -> CouchbaseSdkBackend:
     class FakeBucket:
         def default_scope(self) -> object:
             return object()
@@ -217,8 +268,7 @@ async def test_sdk_backend_insert_if_absent_reports_existing_key() -> None:
         def bucket(self, name: str) -> FakeBucket:
             return FakeBucket()
 
-    collection = FakeCollection()
-    backend = CouchbaseSdkBackend(
+    return CouchbaseSdkBackend(
         connection_string="couchbase://localhost",
         username="",
         password="",
@@ -228,8 +278,32 @@ async def test_sdk_backend_insert_if_absent_reports_existing_key() -> None:
         cluster=cast(Any, FakeCluster()),
         collection=cast(Any, collection),
     )
+
+
+@pytest.mark.asyncio
+async def test_sdk_backend_insert_if_absent_reports_existing_key() -> None:
+    collection = FakeCollection()
+    backend = make_sdk_backend(collection)
     document = cast(MemoryDocument, {"content": "first"})
 
     assert await backend.insert_if_absent("memory::default::abc", document) is True
     assert await backend.insert_if_absent("memory::default::abc", cast(MemoryDocument, {"content": "x"})) is False
     assert collection.documents["memory::default::abc"] == {"content": "first"}
+
+
+@pytest.mark.asyncio
+async def test_sdk_backend_insert_if_absent_reraises_other_errors() -> None:
+    backend = make_sdk_backend(FakeCollection(insert_error=TimeoutError("write timed out")))
+
+    with pytest.raises(TimeoutError, match="write timed out"):
+        await backend.insert_if_absent("memory::default::abc", cast(MemoryDocument, {"content": "first"}))
+
+
+@pytest.mark.asyncio
+async def test_sdk_backend_exists_reports_key_presence() -> None:
+    collection = FakeCollection()
+    backend = make_sdk_backend(collection)
+
+    assert await backend.exists("memory::default::abc") is False
+    await backend.insert_if_absent("memory::default::abc", cast(MemoryDocument, {"content": "first"}))
+    assert await backend.exists("memory::default::abc") is True

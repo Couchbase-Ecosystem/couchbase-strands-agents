@@ -109,6 +109,10 @@ class CouchbaseBackend(Protocol):
         """Store or replace a memory document."""
         ...
 
+    async def exists(self, key: str) -> bool:
+        """Return whether a document with this key exists."""
+        ...
+
     async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
         """Store a memory document unless the key exists. Return False if it already existed."""
         ...
@@ -176,6 +180,10 @@ class CouchbaseSdkBackend:
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
         await asyncio.to_thread(self._collection.upsert, key, document)
+
+    async def exists(self, key: str) -> bool:
+        result = await asyncio.to_thread(self._collection.exists, key)
+        return bool(result.exists)
 
     async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
         try:
@@ -446,6 +454,9 @@ class CouchbaseMemoryStore(MemoryStore):
         clean_metadata = dict(metadata or {})
         explicit_id = clean_metadata.pop("id", clean_metadata.pop("memory_id", None))
         key = str(explicit_id) if explicit_id is not None else self._content_key(content)
+        # Skip the embedding call for a repeated fact; insert_if_absent below stays the race-safe guard.
+        if explicit_id is None and await self._backend.exists(key):
+            return key
         vector = await self._embed(content)
         now = datetime.now(timezone.utc).isoformat()
         document: MemoryDocument = {
@@ -467,6 +478,9 @@ class CouchbaseMemoryStore(MemoryStore):
         await self._backend.close()
 
     def _content_key(self, content: str) -> str:
+        # str.strip() differs slightly from JavaScript's String.prototype.trim(): JS also trims a
+        # BOM (\ufeff) and Python also trims \x1c-\x1f. Extracted facts won't realistically
+        # contain these, so keys match across both SDKs in practice.
         digest = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
         return f"memory::{self.namespace}::{digest}"
 
