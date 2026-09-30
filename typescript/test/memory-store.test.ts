@@ -10,6 +10,12 @@ class FakeBackend implements CouchbaseBackend {
     this.documents.set(key, document)
   }
 
+  async insertIfAbsent(key: string, document: MemoryDocument): Promise<boolean> {
+    if (this.documents.has(key)) return false
+    this.documents.set(key, document)
+    return true
+  }
+
   async vectorSearch(input: any): Promise<SearchHit[]> {
     this.searchCalls.push(input)
     return [
@@ -56,6 +62,57 @@ describe('CouchbaseMemoryStore', () => {
       metadata: { category: 'preference' },
     })
     expect(backend.documents.get(key)?.embedding).toHaveLength(3)
+  })
+
+  it('deduplicates identical content and keeps the original document', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
+
+    const first = await store.add('The user lives in Denver.', { source: 'session-1' })
+    const original = { ...backend.documents.get(first) }
+    const second = await store.add('  The user lives in Denver.\n', { source: 'session-2' })
+
+    expect(second).toBe(first)
+    expect(first.startsWith('memory::default::')).toBe(true)
+    expect(backend.documents.size).toBe(1)
+    expect(backend.documents.get(first)).toEqual(original)
+    expect(backend.documents.get(first)?.metadata).toEqual({ source: 'session-1' })
+  })
+
+  it('does not merge different content', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
+
+    const first = await store.add('The user lives in Denver.')
+    const second = await store.add('the user lives in denver.')
+
+    expect(second).not.toBe(first)
+    expect(backend.documents.size).toBe(2)
+  })
+
+  it('overwrites when an explicit id is given', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
+
+    await store.add('The user lives in Denver.', { id: 'memory-1' })
+    const key = await store.add('The user lives in Boulder.', { memory_id: 'memory-1' })
+
+    expect(key).toBe('memory-1')
+    expect(backend.documents.size).toBe(1)
+    expect(backend.documents.get(key)?.content).toBe('The user lives in Boulder.')
+  })
+
+  it('stores the same content once per namespace', async () => {
+    const backend = new FakeBackend()
+    const storeA = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend, namespace: 'tenant_a' })
+    const storeB = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend, namespace: 'tenant_b' })
+
+    const keyA = await storeA.add('The user lives in Denver.')
+    const keyB = await storeB.add('The user lives in Denver.')
+
+    expect(keyA.startsWith('memory::tenant_a::')).toBe(true)
+    expect(keyB.startsWith('memory::tenant_b::')).toBe(true)
+    expect(backend.documents.size).toBe(2)
   })
 
   it('maps search hits to Strands memory entries', async () => {

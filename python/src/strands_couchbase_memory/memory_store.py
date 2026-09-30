@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol, TypedDict, cast
-from uuid import uuid4
 
 import couchbase.search as couchbase_search
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster, QueryScanConsistency
 from couchbase.collection import Collection
+from couchbase.exceptions import DocumentExistsException
 from couchbase.options import ClusterOptions, QueryOptions, SearchOptions
 from couchbase.vector_search import VectorQuery, VectorSearch
 from strands.memory import MemoryEntry, MemoryStore, MemoryStoreConfig
@@ -108,6 +109,10 @@ class CouchbaseBackend(Protocol):
         """Store or replace a memory document."""
         ...
 
+    async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
+        """Store a memory document unless the key exists. Return False if it already existed."""
+        ...
+
     async def vector_search(
         self,
         *,
@@ -171,6 +176,13 @@ class CouchbaseSdkBackend:
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
         await asyncio.to_thread(self._collection.upsert, key, document)
+
+    async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
+        try:
+            await asyncio.to_thread(self._collection.insert, key, document)
+        except DocumentExistsException:
+            return False
+        return True
 
     async def vector_search(
         self,
@@ -421,13 +433,19 @@ class CouchbaseMemoryStore(MemoryStore):
         return entries
 
     async def add(self, content: str, metadata: Mapping[str, Any] | None = None) -> str:
-        """Store one memory document and return its Couchbase document key."""
+        """Store one memory document and return its Couchbase document key.
+
+        Without ``metadata["id"]`` or ``metadata["memory_id"]``, the key is derived from the
+        trimmed content, so a repeat of the same fact returns the existing key and keeps the
+        original document. With an explicit id, the document is overwritten.
+        """
         if not self.writable:
             raise RuntimeError(f"Memory store {self.name!r} is not writable")
         if not content.strip():
             raise ValueError("content must not be empty")
         clean_metadata = dict(metadata or {})
-        key = str(clean_metadata.pop("id", clean_metadata.pop("memory_id", f"memory::{self.namespace}::{uuid4()}")))
+        explicit_id = clean_metadata.pop("id", clean_metadata.pop("memory_id", None))
+        key = str(explicit_id) if explicit_id is not None else self._content_key(content)
         vector = await self._embed(content)
         now = datetime.now(timezone.utc).isoformat()
         document: MemoryDocument = {
@@ -438,12 +456,19 @@ class CouchbaseMemoryStore(MemoryStore):
             "created_at": now,
             "updated_at": now,
         }
-        await self._backend.upsert(key, document)
+        if explicit_id is not None:
+            await self._backend.upsert(key, document)
+        else:
+            await self._backend.insert_if_absent(key, document)
         return key
 
     async def close(self) -> None:
         """Close backend resources."""
         await self._backend.close()
+
+    def _content_key(self, content: str) -> str:
+        digest = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
+        return f"memory::{self.namespace}::{digest}"
 
     async def _embed(self, text: str) -> list[float]:
         provider = self.embedding_provider

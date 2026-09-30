@@ -81,7 +81,7 @@ Example returned entry:
   "content": "User prefers dark-mode dashboards.",
   "metadata": {
     "category": "preference",
-    "id": "memory::default::<uuid>",
+    "id": "memory::default::<sha256>",
     "score": 0.12,
     "namespace": "default"
   }
@@ -94,8 +94,12 @@ Example returned entry:
 
 - If `metadata.id` is a string, it is used as the document key.
 - Otherwise, if `metadata.memory_id` is a string, it is used as the document key.
-- Otherwise, the connector generates a key shaped like `memory::<namespace>::<uuid>`.
+- Otherwise, the connector builds the key from the content: `memory::<namespace>::<sha256 of the trimmed content>`.
 - The chosen key is removed from stored metadata to avoid duplicating identity fields in the document body.
+
+Identical content is stored once per namespace. Without an explicit id, `add` writes with Couchbase's atomic `insert`; if a document with the same key already exists, `add` returns the existing key and leaves that document (including its `created_at` and metadata) unchanged. This matches Strands' `TestMemoryStore`, and it keeps extraction from storing the same fact again when a later session restates it or when Strands retries a batch (extraction writes are at-least-once). Only surrounding whitespace is ignored, so `User lives in Denver.` and `User lives in Denver, Colorado.` are still two memories.
+
+With an explicit `metadata.id` / `metadata.memory_id`, `add` uses `upsert` and overwrites any existing document with that key.
 
 Stored document shape:
 

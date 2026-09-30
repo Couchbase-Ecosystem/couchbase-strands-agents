@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
+class DocumentExistsError extends Error {}
+const insertedKeys = new Set<string>()
 const fakeCollection = {
   upsert: vi.fn(async () => undefined),
+  insert: vi.fn(async (key: string) => {
+    if (insertedKeys.has(key)) throw new DocumentExistsError('document exists')
+    insertedKeys.add(key)
+  }),
 }
 const fakeScope = {
   query: vi.fn(async () => ({
@@ -32,6 +38,7 @@ const clusterConstructor = vi.fn(() => {
 
 vi.mock('couchbase', () => ({
   connect,
+  DocumentExistsError,
   Cluster: clusterConstructor,
   QueryScanConsistency: { RequestPlus: 'request_plus' },
   SearchQuery: { match: vi.fn() },
@@ -97,5 +104,30 @@ describe('CouchbaseSdkBackend', () => {
 
     await backend.close()
     expect(fakeCluster.close).toHaveBeenCalled()
+  })
+
+  it('inserts only when the key is absent', async () => {
+    const { CouchbaseSdkBackend } = await import('../src/index.js')
+    const backend = new CouchbaseSdkBackend({
+      connectionString: 'couchbase://example.com',
+      username: 'Administrator',
+      password: 'password',
+      bucketName: 'strands_memory',
+      scopeName: '_default',
+      collectionName: '_default',
+    })
+    const document = {
+      content: 'hello',
+      embedding: [1, 0, 0],
+      metadata: {},
+      namespace: 'default',
+      created_at: '2026-08-19T00:00:00Z',
+      updated_at: '2026-08-19T00:00:00Z',
+    }
+
+    await expect(backend.insertIfAbsent('memory::default::abc', document)).resolves.toBe(true)
+    await expect(backend.insertIfAbsent('memory::default::abc', document)).resolves.toBe(false)
+    expect(fakeCollection.insert).toHaveBeenCalledTimes(2)
+    expect(fakeCollection.upsert).not.toHaveBeenCalledWith('memory::default::abc', expect.anything())
   })
 })
