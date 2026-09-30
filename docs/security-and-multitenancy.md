@@ -107,6 +107,7 @@ The manager annotates results with the store identity so the model and applicati
 - Prefer `couchbases://` and TLS for remote deployments.
 - Do not commit `.env` files or API keys. The repository's `.env.example` files intentionally use placeholders.
 - Use distinct Couchbase users or collections when regulatory isolation requires more than namespace filtering.
+- With the Search-service backend, map the namespace field with the `keyword` analyzer. The namespace prefilter is an exact term query, and an analyzed field can't enforce the namespace boundary.
 
 ## Prompt-injection considerations
 

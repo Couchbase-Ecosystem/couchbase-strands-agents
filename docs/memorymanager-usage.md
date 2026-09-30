@@ -151,7 +151,7 @@ await store.close()
 | `embedding_provider is required` / constructor error | No embedding provider was configured | Pass an object/function that returns vectors. |
 | `embedding provider returned N dimensions; expected M` | Embedding model output does not match configured `dimensions` or vector index dimensions | Align embedding provider, store config, and vector index `dimension`. |
 | Query error about invalid metric | `COUCHBASE_DISTANCE_METRIC` does not match Couchbase-supported values or the index `similarity` | Use one of `COSINE`, `DOT`, `L2`, `EUCLIDEAN`, `L2_SQUARED`, `EUCLIDEAN_SQUARED`, and match the index. |
-| Empty Hyperscale results | Index missing/wrong, metric mismatch, namespace mismatch, or too few centroids probed | Verify `CREATE VECTOR INDEX`, namespace, and increase `num_candidates` / `numCandidates`. |
+| Empty Hyperscale results | Index missing/wrong, metric mismatch, namespace mismatch, or too few centroids probed | Verify `CREATE VECTOR INDEX`, namespace, and increase `num_candidates` / `centroidsToProbe`. In TypeScript, `initialize()` catches a missing or mismatched index at agent setup. |
 | Auth or timeout errors | Wrong credentials, service not ready, Capella IP allowlist, TLS mismatch | Verify connection string, user permissions, allowed IPs, and `couchbase://` vs `couchbases://`. |
 
 ## References

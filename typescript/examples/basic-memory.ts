@@ -16,7 +16,7 @@ const store = new CouchbaseMemoryStore({
   bucketName: process.env.COUCHBASE_BUCKET ?? 'strands_memory',
   scopeName: process.env.COUCHBASE_SCOPE ?? '_default',
   collectionName: process.env.COUCHBASE_COLLECTION ?? '_default',
-  distanceMetric: process.env.COUCHBASE_DISTANCE_METRIC ?? 'L2_SQUARED',
+  // distanceMetric defaults to COUCHBASE_DISTANCE_METRIC, then L2_SQUARED.
   namespace: process.env.COUCHBASE_NAMESPACE ?? 'demo',
   embeddingProvider,
   dimensions: 3,
@@ -24,6 +24,8 @@ const store = new CouchbaseMemoryStore({
 })
 
 try {
+  // MemoryManager calls this during agent setup; standalone use calls it directly.
+  await store.initialize()
   const key = await store.add('Alex prefers dark-mode dashboards and async standups.', { category: 'preference' })
   console.log(`stored key: ${key}`)
   console.log(

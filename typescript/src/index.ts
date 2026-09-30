@@ -1,8 +1,8 @@
-export { CouchbaseMemoryStore, CouchbaseSdkBackend } from './memory-store.js'
+export { CouchbaseMemoryStore } from './memory-store.js'
 export type {
-  CouchbaseBackend,
   CouchbaseMemoryStoreConfig,
+  CouchbaseVectorBackend,
+  DistanceMetric,
   EmbeddingProvider,
   MemoryDocument,
-  SearchHit,
 } from './memory-store.js'
