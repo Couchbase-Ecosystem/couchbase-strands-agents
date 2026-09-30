@@ -49,6 +49,8 @@ WITH {
 };
 ```
 
+Hyperscale Vector Indexes are trained on existing vectors, so the collection must already contain at least one document with an `embedding` of the configured dimension before you create the index; on an empty collection `CREATE VECTOR INDEX` fails with `ErrTraining: number of centroids required to train the index are not set`. With `"description": "IVF,SQ8"` Couchbase picks the centroid count from the data. If you pin it (`"IVF<n>,SQ8"`), the collection needs at least `n` documents.
+
 Use the dimensions and similarity metric of your embedding model/index. The connector default `COUCHBASE_DISTANCE_METRIC=L2_SQUARED` must match the index `similarity` setting for the Query service to select the vector index.
 
 ## Tuning `num_candidates` / `numCandidates`

@@ -7,7 +7,7 @@ The packages are prepared for publishing as separate Strands extensions, but the
 ## What you can use this for
 
 - Give a Strands agent long-term semantic memory backed by Couchbase Capella or Couchbase Server.
-- Store model-extracted memories in Couchbase and recall relevant entries automatically through Strands `MemoryManager` injection.
+- Store model-extracted memories (short distilled facts, not raw conversation turns) in Couchbase and recall relevant entries automatically through Strands `MemoryManager` injection.
 - Share one Couchbase bucket across tenants or agents by configuring isolated namespaces.
 
 This integration does not generate embeddings itself. You provide an embedding provider/callback so the memory store is not coupled to OpenAI, Bedrock, Cohere, Hugging Face, or any other vendor.
@@ -67,6 +67,8 @@ WITH {
   "description": "IVF,SQ8"
 };
 ```
+
+Hyperscale Vector Indexes are trained on existing vectors, so the collection must already contain at least one document with an `embedding` of the configured dimension before you create the index; on an empty collection `CREATE VECTOR INDEX` fails with `ErrTraining: number of centroids required to train the index are not set`. With `"description": "IVF,SQ8"` Couchbase picks the centroid count from the data. If you pin it (`"IVF<n>,SQ8"`), the collection needs at least `n` documents.
 
 The connector also supports the Search-service vector API by setting `COUCHBASE_VECTOR_BACKEND=search` (or `vector_backend="search"` / `vectorBackend: "search"`) and configuring a Search Vector Index.
 
@@ -249,6 +251,8 @@ The release workflows can also be triggered manually with `workflow_dispatch` ag
 
 - Connection failures: verify `COUCHBASE_CONNECTION_STRING`, credentials, TLS settings, and allowed IPs in Capella.
 - Empty search results after writes: verify the Hyperscale Vector Index exists, the distance metric matches the query metric, and `num_candidates` / `numCandidates` probes enough centroids for your data.
+- `ErrTraining` when creating the Hyperscale Vector Index: insert at least one document with an embedding first (and at least `n` documents if you pin `IVF<n>,SQ8`).
+- `memory extraction failed` / `cluster_closed (1006)` at shutdown: call `await memoryManager.flush()` (`await memory_manager.flush()` in Python) before `store.close()`.
 - Vector dimension errors: ensure your embedding provider returns exactly the same number of dimensions as the Hyperscale Vector Index.
 - Metadata filters not matching: make sure metadata and namespace fields are included in the Hyperscale Vector Index or switch to a Composite Vector Index when scalar filters should run before vector search.
 

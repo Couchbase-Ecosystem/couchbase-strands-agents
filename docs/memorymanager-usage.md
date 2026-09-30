@@ -110,11 +110,35 @@ Stored document shape:
 }
 ```
 
-`add_messages(messages, context)` / `addMessages(messages, context)` stores raw conversation turns as individual entries, preserving role metadata. For model-distilled durable facts, prefer Strands extraction with `extraction=True`.
+## Extraction semantics
+
+With `extraction=True` / `extraction: true`, Strands uses its client-side `ModelExtractor`: it asks the model to distill conversation turns into short facts (for example `User lives in Denver.`) and writes each fact through `add`. Questions, small talk, and assistant replies are not stored verbatim.
+
+The store deliberately does not implement `add_messages` / `addMessages`. Strands treats any store that has that method as doing server-side extraction, skips `ModelExtractor`, and hands it the raw message batch, which would save every user and assistant turn as its own memory. To use a different model or prompt for extraction, pass an explicit extractor, for example `extraction={"extractor": ModelExtractor(model=...)}` / `extraction: { extractor: new ModelExtractor({ model }) }`.
 
 ## Flushing and shutdown
 
-Strands extraction writes can run in the background. The Strands Memory documentation describes flushing pending writes before shutdown for async/long-running agent flows so recent turns are not lost. Use the `MemoryManager` flush method where your SDK/runtime exposes it.
+Strands extraction runs in the background. Call `flush()` on the `MemoryManager` before `store.close()`, otherwise pending extraction writes run against a closed Couchbase connection and fail (Strands logs `memory extraction failed`; the SDK error is `cluster_closed (1006)`).
+
+Python:
+
+```python
+memory_manager = MemoryManager(stores=[store])
+agent = Agent(memory_manager=memory_manager)
+await agent.invoke_async("I prefer dark-mode dashboards.")
+await memory_manager.flush()
+await store.close()
+```
+
+TypeScript:
+
+```ts
+const memoryManager = new MemoryManager({ stores: [store] })
+const agent = new Agent({ memoryManager })
+await agent.invoke('I prefer dark-mode dashboards.')
+await memoryManager.flush()
+await store.close()
+```
 
 ## Common errors
 

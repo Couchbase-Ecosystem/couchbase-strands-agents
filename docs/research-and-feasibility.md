@@ -86,5 +86,5 @@ Evidence:
 Implementation path:
 
 - Owned Couchbase example/extension repository with separate Python and TypeScript packages.
-- Implement `search`, `add`, and raw `add_messages`/`addMessages` for completeness.
+- Implement `search` and `add`. Do not implement `add_messages`/`addMessages`: Strands treats that method as server-side extraction and would bypass its `ModelExtractor`, storing raw turns.
 - Require a pre-created Couchbase Hyperscale Vector Index by default and document Search-service setup separately.
