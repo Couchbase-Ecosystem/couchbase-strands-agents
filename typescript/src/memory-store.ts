@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import * as couchbase from 'couchbase'
 import type {
   ExtractionConfig,
@@ -49,6 +50,9 @@ export interface SearchHit {
 
 export interface CouchbaseBackend {
   upsert(key: string, document: MemoryDocument): Promise<void>
+  exists(key: string): Promise<boolean>
+  /** Stores the document unless the key exists. Resolves to false if it already existed. */
+  insertIfAbsent(key: string, document: MemoryDocument): Promise<boolean>
   vectorSearch(input: {
     searchIndexName: string
     vectorBackend: CouchbaseVectorBackend
@@ -129,6 +133,23 @@ export class CouchbaseSdkBackend implements CouchbaseBackend {
   async upsert(key: string, document: MemoryDocument): Promise<void> {
     const collection = await this.getCollection()
     await collection.upsert(key, document)
+  }
+
+  async exists(key: string): Promise<boolean> {
+    const collection = await this.getCollection()
+    const result = await collection.exists(key)
+    return result.exists
+  }
+
+  async insertIfAbsent(key: string, document: MemoryDocument): Promise<boolean> {
+    const collection = await this.getCollection()
+    try {
+      await collection.insert(key, document)
+    } catch (error) {
+      if (error instanceof couchbase.DocumentExistsError) return false
+      throw error
+    }
+    return true
   }
 
   async vectorSearch(input: {
@@ -386,22 +407,36 @@ export class CouchbaseMemoryStore implements MemoryStore {
     const metadataId = cleanMetadata.id ?? cleanMetadata.memory_id
     delete cleanMetadata.id
     delete cleanMetadata.memory_id
-    const key = typeof metadataId === 'string' ? metadataId : `memory::${this.namespace}::${crypto.randomUUID()}`
+    const explicitId = typeof metadataId === 'string'
+    const key = explicitId ? metadataId : this.contentKey(content)
+    // Skip the embedding call for a repeated fact; insertIfAbsent below stays the race-safe guard.
+    if (!explicitId && (await this.backend.exists(key))) return key
     const embedding = await this.embed(content)
     const now = new Date().toISOString()
-    await this.backend.upsert(key, {
+    const document: MemoryDocument = {
       content,
       embedding,
       metadata: cleanMetadata,
       namespace: this.namespace,
       created_at: now,
       updated_at: now,
-    })
+    }
+    // Without an explicit id, identical trimmed content maps to one key and a repeat keeps the original.
+    if (explicitId) await this.backend.upsert(key, document)
+    else await this.backend.insertIfAbsent(key, document)
     return key
   }
 
   async close(): Promise<void> {
     await this.backend.close()
+  }
+
+  private contentKey(content: string): string {
+    // String.prototype.trim() differs slightly from Python's str.strip(): JS also trims a BOM (\ufeff)
+    // and Python also trims \x1c-\x1f. Extracted facts won't realistically contain these, so keys match
+    // across both SDKs in practice.
+    const digest = createHash('sha256').update(content.trim(), 'utf8').digest('hex')
+    return `memory::${this.namespace}::${digest}`
   }
 
   private async embed(text: string): Promise<number[]> {
