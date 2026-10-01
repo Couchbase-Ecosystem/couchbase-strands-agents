@@ -81,7 +81,7 @@ Example returned entry:
   "content": "User prefers dark-mode dashboards.",
   "metadata": {
     "category": "preference",
-    "id": "memory::default::<uuid>",
+    "id": "memory::default::<sha256>",
     "score": 0.12,
     "namespace": "default"
   }
@@ -94,8 +94,12 @@ Example returned entry:
 
 - If `metadata.id` is a string, it is used as the document key.
 - Otherwise, if `metadata.memory_id` is a string, it is used as the document key.
-- Otherwise, the connector generates a key shaped like `memory::<namespace>::<uuid>`.
+- Otherwise, the connector builds the key from the content: `memory::<namespace>::<sha256 of the trimmed content>`.
 - The chosen key is removed from stored metadata to avoid duplicating identity fields in the document body.
+
+Identical content is stored once per namespace. Without an explicit id, `add` first checks whether the key exists and, if so, returns it without calling the embedding provider. Otherwise it writes with Couchbase's atomic `insert`, which still guards against concurrent writers; if a document with the same key already exists, `add` returns the existing key and leaves that document (including its `created_at` and metadata) unchanged. This matches Strands' `TestMemoryStore`, and it keeps extraction from storing the same fact again when a later session restates it or when Strands retries a batch (extraction writes are at-least-once). Only surrounding whitespace is ignored, so `User lives in Denver.` and `User lives in Denver, Colorado.` are still two memories.
+
+With an explicit `metadata.id` / `metadata.memory_id`, `add` uses `upsert` and overwrites any existing document with that key.
 
 Stored document shape:
 
@@ -147,7 +151,7 @@ await store.close()
 | `embedding_provider is required` / constructor error | No embedding provider was configured | Pass an object/function that returns vectors. |
 | `embedding provider returned N dimensions; expected M` | Embedding model output does not match configured `dimensions` or vector index dimensions | Align embedding provider, store config, and vector index `dimension`. |
 | Query error about invalid metric | `COUCHBASE_DISTANCE_METRIC` does not match Couchbase-supported values or the index `similarity` | Use one of `COSINE`, `DOT`, `L2`, `EUCLIDEAN`, `L2_SQUARED`, `EUCLIDEAN_SQUARED`, and match the index. |
-| Empty Hyperscale results | Index missing/wrong, metric mismatch, namespace mismatch, or too few centroids probed | Verify `CREATE VECTOR INDEX`, namespace, and increase `num_candidates` / `numCandidates`. |
+| Empty Hyperscale results | Index missing/wrong, metric mismatch, namespace mismatch, or too few centroids probed | Verify `CREATE VECTOR INDEX`, namespace, and increase `num_candidates` / `centroidsToProbe`. In TypeScript, `initialize()` catches a missing or mismatched index at agent setup. |
 | Auth or timeout errors | Wrong credentials, service not ready, Capella IP allowlist, TLS mismatch | Verify connection string, user permissions, allowed IPs, and `couchbase://` vs `couchbases://`. |
 
 ## References

@@ -70,7 +70,23 @@ Hyperscale Vector Indexes are trained on existing vectors, so the collection mus
 
 The `similarity` value must match `COUCHBASE_DISTANCE_METRIC`. Use a dimension matching your embedding model. The Search-service vector backend is available only when `COUCHBASE_VECTOR_BACKEND=search`.
 
-Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`. For small local indexes, configure enough centroids-to-probe (`num_candidates` / `numCandidates`, default 8) to cover the trained centroids.
+Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`. For small local indexes, configure enough centroids-to-probe (`num_candidates` in Python, `centroidsToProbe` in TypeScript, default 8) to cover the trained centroids.
+
+## Startup validation (TypeScript)
+
+Strands `MemoryManager` catches store errors during recall and only logs them, so a missing index or a wrong setting would otherwise leave the agent running with no memory. The TypeScript store implements `initialize()`, which `MemoryManager` awaits during agent setup. It:
+
+- connects, and throws a clear error on authentication or network failures;
+- for `hyperscale`, checks `system:indexes` for a GSI index with a `VECTOR` key on `vectorField` in the configured collection, whose `similarity` matches `distanceMetric` and, when `dimensions` is set, whose `dimension` matches;
+- for `search`, checks that `searchIndexName` exists, maps `vectorField` as a vector field (with matching `dims` when `dimensions` is set), and maps `namespaceField` with the `keyword` analyzer.
+
+Call `await store.initialize()` yourself when you use the store without `MemoryManager`. If the credentials can't read `system:indexes` or Search index definitions, pass `validateOnInitialize: false`. `initialize()` then only connects.
+
+The store also throws in its constructor when it would open the connection itself and no username or password is configured.
+
+## Search Vector Index requirements
+
+With `COUCHBASE_VECTOR_BACKEND=search`, the namespace prefilter is an exact term query. Map the `namespace` field as a text field with the `keyword` analyzer. With the `standard` analyzer, `tenant-a` is indexed as `tenant` and `a`, so exact matching fails and namespaces can't be isolated. The TypeScript `initialize()` rejects such an index.
 
 ## Related documentation
 
@@ -96,4 +112,4 @@ export COUCHBASE_INTEGRATION_TESTS=1
 npm test -- test/integration-live.test.ts
 ```
 
-If live tests fail with no hits after a successful write, first verify the Hyperscale Vector Index exists, its `similarity` matches `COUCHBASE_DISTANCE_METRIC`, its dimension matches your embeddings, and `num_candidates` / `numCandidates` probes enough centroids for the test data.
+If live tests fail with no hits after a successful write, first verify the Hyperscale Vector Index exists, its `similarity` matches `COUCHBASE_DISTANCE_METRIC`, its dimension matches your embeddings, and `num_candidates` / `centroidsToProbe` probes enough centroids for the test data.

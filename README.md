@@ -250,7 +250,7 @@ The release workflows can also be triggered manually with `workflow_dispatch` ag
 ## Troubleshooting
 
 - Connection failures: verify `COUCHBASE_CONNECTION_STRING`, credentials, TLS settings, and allowed IPs in Capella.
-- Empty search results after writes: verify the Hyperscale Vector Index exists, the distance metric matches the query metric, and `num_candidates` / `numCandidates` probes enough centroids for your data.
+- Empty search results after writes: verify the Hyperscale Vector Index exists, the distance metric matches the query metric, and `num_candidates` (Python) / `centroidsToProbe` (TypeScript) probes enough centroids for your data.
 - `ErrTraining` when creating the Hyperscale Vector Index: insert at least one document with an embedding first (and at least `n` documents if you pin `IVF<n>,SQ8`).
 - `memory extraction failed` / `cluster_closed (1006)` at shutdown: call `await memoryManager.flush()` (`await memory_manager.flush()` in Python) before `store.close()`.
 - Vector dimension errors: ensure your embedding provider returns exactly the same number of dimensions as the Hyperscale Vector Index.

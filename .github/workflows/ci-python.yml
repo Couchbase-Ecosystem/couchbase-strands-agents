@@ -7,7 +7,7 @@ on:
       - 'python/**'
       - '.github/workflows/ci-python.yml'
   push:
-    branches: [ main, feat/couchbase-strands-memory-store ]
+    branches: [ main ]
     paths:
       - 'python/**'
       - '.github/workflows/ci-python.yml'

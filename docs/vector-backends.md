@@ -53,9 +53,9 @@ Hyperscale Vector Indexes are trained on existing vectors, so the collection mus
 
 Use the dimensions and similarity metric of your embedding model/index. The connector default `COUCHBASE_DISTANCE_METRIC=L2_SQUARED` must match the index `similarity` setting for the Query service to select the vector index.
 
-## Tuning `num_candidates` / `numCandidates`
+## Tuning `num_candidates` / `centroidsToProbe`
 
-For the Hyperscale backend, `num_candidates` (Python) and `numCandidates` (TypeScript) are passed as the `nprobes` argument to `APPROX_VECTOR_DISTANCE`. Couchbase docs define this as the number of centroids to probe for matching vectors. If omitted by the function, Couchbase uses the index `scan_nprobes` setting when available; invalid values default to `1`.
+For the Hyperscale backend, `num_candidates` (Python) and `centroidsToProbe` (TypeScript) are passed as the `nprobes` argument to `APPROX_VECTOR_DISTANCE`. Couchbase docs define this as the number of centroids to probe for matching vectors. If omitted by the function, Couchbase uses the index `scan_nprobes` setting when available; invalid values default to `1`.
 
 The connector passes `8` by default because tiny local/dev indexes can otherwise miss a relevant vector when only one centroid is probed. Tune this value for your data, latency, and recall needs.
 
@@ -75,9 +75,11 @@ TypeScript:
 const store = new CouchbaseMemoryStore({
   name: 'memories',
   embeddingProvider: embeddings,
-  numCandidates: 16,
+  centroidsToProbe: 16,
 })
 ```
+
+In TypeScript, `numCandidates` only applies to the Search-service backend, where it sets the `VectorQuery` candidate count (default `3 * limit`).
 
 ## Search-service fallback
 
@@ -89,6 +91,8 @@ export COUCHBASE_SEARCH_INDEX=strands-memory-search-index
 ```
 
 In this mode the connector uses Couchbase SDK Search APIs (`VectorQuery`, `VectorSearch`, and `scope.search(...)`). It expects a Search Vector Index that stores/includes the configured `content`, `metadata`, and `namespace` fields.
+
+The namespace prefilter is an exact term query, so map the `namespace` field with the `keyword` analyzer. With the `standard` analyzer the namespace is split into words and exact matching fails. `distanceMetric` is not used on this path; the index `similarity` setting applies.
 
 ## Version and service notes
 
