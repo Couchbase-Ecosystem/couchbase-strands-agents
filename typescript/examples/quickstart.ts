@@ -11,7 +11,7 @@
 import { Agent, MemoryManager } from '@strands-agents/sdk'
 import { OpenAIModel } from '@strands-agents/sdk/models/openai'
 import OpenAI from 'openai'
-import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase'
 
 const openai = new OpenAI() // reads OPENAI_API_KEY
 

@@ -7,8 +7,8 @@ import pytest
 from couchbase.exceptions import DocumentExistsException
 from strands.memory import MemoryManager, ModelExtractor
 
-from strands_couchbase_memory import CouchbaseMemoryStore, MemoryDocument
-from strands_couchbase_memory.memory_store import CouchbaseSdkBackend, SearchHit
+from strands_couchbase import CouchbaseMemoryStore, MemoryDocument
+from strands_couchbase.memory_store import CouchbaseSdkBackend, SearchHit
 
 
 class FakeEmbeddingProvider:
@@ -313,7 +313,7 @@ async def test_sdk_backend_exists_reports_key_presence() -> None:
 async def test_sdk_backend_search_prefilters_hyphenated_namespace_with_term_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import strands_couchbase_memory.memory_store as memory_store
+    import strands_couchbase.memory_store as memory_store
 
     vector_queries: list[Any] = []
     create = memory_store.VectorQuery.create

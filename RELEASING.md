@@ -10,7 +10,7 @@ The two packages are released separately, each from its own tag.
 
 ## TypeScript package
 
-1. Configure npm trusted publishing for `@couchbase-ecosystem/strands-couchbase-memory` with GitHub organization `Couchbase-Ecosystem`, repository `couchbase-strands-agents`, workflow `release-typescript.yml` and environment `npm`. npm only lets you add a trusted publisher to a package that already exists, so the first version has to be published by a maintainer by hand; see [`typescript/RELEASING.md`](typescript/RELEASING.md).
+1. Configure npm trusted publishing for `@couchbase-ecosystem/strands-couchbase` with GitHub organization `Couchbase-Ecosystem`, repository `couchbase-strands-agents`, workflow `release-typescript.yml` and environment `npm`. npm only lets you add a trusted publisher to a package that already exists, so the first version has to be published by a maintainer by hand; see [`typescript/RELEASING.md`](typescript/RELEASING.md).
 2. Update the `typescript/package.json` version and `typescript/CHANGELOG.md`.
 3. Tag a release such as `typescript-v0.1.0`. The tag must match the `package.json` version, or the workflow stops.
 4. Pushing the tag runs the release workflow: checks, live tests against Couchbase Server 8, a clean-project install of the packed tarball that type-checks the examples and runs `examples/smoke-test.ts`, `npm publish --dry-run`, then `npm publish --provenance --access public` over OIDC (no `NPM_TOKEN`).

@@ -19,7 +19,7 @@ Python:
 ```python
 from strands import Agent
 from strands.memory import MemoryManager
-from strands_couchbase_memory import CouchbaseMemoryStore
+from strands_couchbase import CouchbaseMemoryStore
 
 store = CouchbaseMemoryStore(
     name="preferences",
@@ -37,7 +37,7 @@ TypeScript:
 
 ```ts
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase'
 
 const store = new CouchbaseMemoryStore({
   name: 'preferences',

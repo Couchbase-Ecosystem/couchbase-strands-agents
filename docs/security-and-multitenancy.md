@@ -26,7 +26,7 @@ Python:
 ```python
 from strands import Agent
 from strands.memory import MemoryManager
-from strands_couchbase_memory import CouchbaseMemoryStore
+from strands_couchbase import CouchbaseMemoryStore
 
 
 def build_agent_for_user(user_id: str, embedding_provider) -> Agent:
@@ -52,7 +52,7 @@ TypeScript:
 
 ```ts
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase'
 
 export function buildAgentForUser(userId: string, embeddingProvider: { embed(text: string): Promise<number[]> }) {
   const store = new CouchbaseMemoryStore({

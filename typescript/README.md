@@ -1,6 +1,6 @@
 # Couchbase memory for Strands Agents (TypeScript)
 
-`@couchbase-ecosystem/strands-couchbase-memory` gives [Strands Agents](https://strandsagents.com) long-term memory that outlives a conversation. It implements the Strands `MemoryStore` interface: the agent's `MemoryManager` writes short facts about the user into Couchbase, and before each model call it looks up the ones relevant to the current message with vector search and adds them to the prompt. Restart the process, start a new agent, and it still knows that Alex is vegetarian.
+`@couchbase-ecosystem/strands-couchbase` gives [Strands Agents](https://strandsagents.com) long-term memory that outlives a conversation. It implements the Strands `MemoryStore` interface: the agent's `MemoryManager` writes short facts about the user into Couchbase, and before each model call it looks up the ones relevant to the current message with vector search and adds them to the prompt. Restart the process, start a new agent, and it still knows that Alex is vegetarian.
 
 ## Requirements
 
@@ -13,11 +13,11 @@
 ## Install
 
 ```bash
-npm install @couchbase-ecosystem/strands-couchbase-memory @strands-agents/sdk
+npm install @couchbase-ecosystem/strands-couchbase @strands-agents/sdk
 npm install openai@6   # the model provider you use; Strands supports openai 6.x
 ```
 
-The package is **ESM-only**: use `import`. On Node.js 22.12 and later, `require()` also works through Node's built-in `require(esm)`; on earlier 22.x releases, CommonJS code must use `await import('@couchbase-ecosystem/strands-couchbase-memory')`.
+The package is **ESM-only**: use `import`. On Node.js 22.12 and later, `require()` also works through Node's built-in `require(esm)`; on earlier 22.x releases, CommonJS code must use `await import('@couchbase-ecosystem/strands-couchbase')`.
 
 ## Quickstart
 
@@ -108,7 +108,7 @@ After `npm install` (see [Install](#install)), this is the whole quickstart. It 
 import { Agent, MemoryManager } from '@strands-agents/sdk'
 import { OpenAIModel } from '@strands-agents/sdk/models/openai'
 import OpenAI from 'openai'
-import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase'
 
 const openai = new OpenAI() // reads OPENAI_API_KEY
 
@@ -186,7 +186,7 @@ An embedding provider is any object with an `embed(text)` method, or a plain fun
 
 ```ts
 import OpenAI from 'openai'
-import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase-memory'
+import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase'
 
 const openai = new OpenAI()
 
@@ -203,7 +203,7 @@ export const embeddingProvider: EmbeddingProvider = {
 
 ```ts
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
-import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase-memory'
+import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase'
 
 const bedrock = new BedrockRuntimeClient()
 
@@ -226,7 +226,7 @@ export const embeddingProvider: EmbeddingProvider = {
 
 ```ts
 import { pipeline } from '@huggingface/transformers'
-import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase-memory'
+import type { EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase'
 
 const extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')
 
@@ -280,7 +280,7 @@ Give each user or tenant their own store with their own `namespace`, and set it 
 ```ts
 import * as couchbase from 'couchbase'
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { CouchbaseMemoryStore, type EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase-memory'
+import { CouchbaseMemoryStore, type EmbeddingProvider } from '@couchbase-ecosystem/strands-couchbase'
 
 // One connection for the whole app. Stores never close a cluster they were given.
 const cluster = await couchbase.connect(process.env.COUCHBASE_CONNECTION_STRING!, {

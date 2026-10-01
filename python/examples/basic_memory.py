@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 
-from strands_couchbase_memory import CouchbaseMemoryStore
+from strands_couchbase import CouchbaseMemoryStore
 
 
 class DemoEmbeddingProvider:

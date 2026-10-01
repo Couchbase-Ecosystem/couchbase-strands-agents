@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
-from strands_couchbase_memory import CouchbaseMemoryStore
+from strands_couchbase import CouchbaseMemoryStore
 
 pytestmark = pytest.mark.integration
 
