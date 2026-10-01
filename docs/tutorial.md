@@ -43,7 +43,7 @@ Hyperscale Vector queries use SQL++ `APPROX_VECTOR_DISTANCE`; ensure your vector
 hit: Alex prefers dark-mode dashboards and async standups. metadata={...}
 ```
 
-For small local test datasets, increase `num_candidates` / `numCandidates` if approximate search misses a recently added vector.
+For small local test datasets, increase `num_candidates` (Python) / `centroidsToProbe` (TypeScript) if approximate search misses a recently added vector.
 
 ## 3. TypeScript example
 

@@ -1,10 +1,16 @@
 import { MemoryManager, ModelExtractor } from '@strands-agents/sdk'
-import { describe, expect, it } from 'vitest'
-import { CouchbaseMemoryStore, type CouchbaseBackend, type MemoryDocument, type SearchHit } from '../src/index.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CouchbaseMemoryStore, type MemoryDocument } from '../src/index.js'
+import type { CouchbaseBackend, IndexValidation, SearchHit } from '../src/memory-store.js'
 
 class FakeBackend implements CouchbaseBackend {
   documents = new Map<string, MemoryDocument>()
   searchCalls: any[] = []
+  initializeCalls: (IndexValidation | undefined)[] = []
+
+  async initialize(validation?: IndexValidation): Promise<void> {
+    this.initializeCalls.push(validation)
+  }
 
   async upsert(key: string, document: MemoryDocument): Promise<void> {
     this.documents.set(key, document)
@@ -217,5 +223,154 @@ describe('CouchbaseMemoryStore', () => {
     // otherwise raw turns are handed to the store as-is.
     const [binding] = (manager as any)._extractionStores
     expect(binding.config.extractor).toBeInstanceOf(ModelExtractor)
+  })
+
+  it('initialize validates the index with the store config', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({
+      name: 'cb',
+      embeddingProvider,
+      backend,
+      dimensions: 3,
+      vectorField: 'vec',
+      distanceMetric: 'COSINE',
+    })
+
+    await store.initialize()
+
+    expect(backend.initializeCalls).toEqual([
+      {
+        vectorBackend: 'hyperscale',
+        searchIndexName: 'strands-memory-search-index',
+        vectorField: 'vec',
+        namespaceField: 'namespace',
+        distanceMetric: 'COSINE',
+        dimensions: 3,
+      },
+    ])
+  })
+
+  it('initialize only connects when validateOnInitialize is false', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend, validateOnInitialize: false })
+
+    await store.initialize()
+
+    expect(backend.initializeCalls).toEqual([undefined])
+  })
+
+  it('MemoryManager surfaces initialize failures instead of swallowing them', async () => {
+    class BrokenBackend extends FakeBackend {
+      override async initialize(): Promise<void> {
+        throw new Error('No vector index on `embedding`')
+      }
+    }
+    const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend: new BrokenBackend() })
+    const manager = new MemoryManager({ stores: [store] })
+
+    await expect((manager as any)._initStores()).rejects.toThrow('No vector index')
+  })
+
+  it('passes centroidsToProbe and numCandidates separately', async () => {
+    const backend = new FakeBackend()
+    const store = new CouchbaseMemoryStore({
+      name: 'cb',
+      embeddingProvider,
+      backend,
+      centroidsToProbe: 16,
+      numCandidates: 40,
+    })
+
+    await store.search('dashboards')
+
+    expect(backend.searchCalls[0]).toMatchObject({ centroidsToProbe: 16, numCandidates: 40 })
+  })
+
+  it.each([0, -1, 1.5])('rejects centroidsToProbe %s', (value) => {
+    expect(
+      () =>
+        new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend: new FakeBackend(), centroidsToProbe: value })
+    ).toThrow('centroidsToProbe must be a positive integer')
+  })
+
+  it('rejects an unknown distanceMetric in the constructor', () => {
+    expect(
+      () =>
+        new CouchbaseMemoryStore({
+          name: 'cb',
+          embeddingProvider,
+          backend: new FakeBackend(),
+          distanceMetric: 'HAMMING' as any,
+        })
+    ).toThrow("distanceMetric must be one of COSINE, DOT, L2, EUCLIDEAN, L2_SQUARED, EUCLIDEAN_SQUARED; got 'HAMMING'")
+  })
+
+  describe('environment variables', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it.each([
+      ['HYPERSCALE', 'hyperscale'],
+      [' Search ', 'search'],
+    ])('normalizes COUCHBASE_VECTOR_BACKEND=%j', async (value, expected) => {
+      vi.stubEnv('COUCHBASE_VECTOR_BACKEND', value)
+      const backend = new FakeBackend()
+      const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
+
+      await store.search('dashboards')
+
+      expect(backend.searchCalls[0].vectorBackend).toBe(expected)
+    })
+
+    it('rejects an unknown COUCHBASE_VECTOR_BACKEND', () => {
+      vi.stubEnv('COUCHBASE_VECTOR_BACKEND', 'fts')
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend: new FakeBackend() })).toThrow(
+        "vectorBackend must be 'hyperscale' or 'search'; got 'fts'"
+      )
+    })
+
+    it('normalizes COUCHBASE_DISTANCE_METRIC', async () => {
+      vi.stubEnv('COUCHBASE_DISTANCE_METRIC', 'cosine')
+      const backend = new FakeBackend()
+      const store = new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend })
+
+      await store.search('dashboards')
+
+      expect(backend.searchCalls[0].distanceMetric).toBe('COSINE')
+    })
+
+    it('rejects an unknown COUCHBASE_DISTANCE_METRIC in the constructor', () => {
+      vi.stubEnv('COUCHBASE_DISTANCE_METRIC', 'manhattan')
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, backend: new FakeBackend() })).toThrow(
+        'distanceMetric must be one of'
+      )
+    })
+
+    it('requires credentials when the store owns the connection', () => {
+      vi.stubEnv('COUCHBASE_USERNAME', '')
+      vi.stubEnv('COUCHBASE_PASSWORD', '')
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider })).toThrow(
+        'Couchbase credentials are required'
+      )
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, username: 'app' })).toThrow(
+        'Couchbase credentials are required'
+      )
+    })
+
+    it('reads credentials from the environment', () => {
+      vi.stubEnv('COUCHBASE_USERNAME', 'app')
+      vi.stubEnv('COUCHBASE_PASSWORD', 'secret')
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider })).not.toThrow()
+    })
+
+    it('does not require credentials with a caller-provided cluster', () => {
+      vi.stubEnv('COUCHBASE_USERNAME', '')
+      vi.stubEnv('COUCHBASE_PASSWORD', '')
+      const cluster = {
+        bucket: () => ({ defaultScope: () => ({}), defaultCollection: () => ({}) }),
+      } as any
+      expect(() => new CouchbaseMemoryStore({ name: 'cb', embeddingProvider, cluster })).not.toThrow()
+    })
   })
 })

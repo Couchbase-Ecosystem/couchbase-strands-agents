@@ -312,7 +312,9 @@ class CouchbaseSdkBackend:
         metadata_field: str,
     ) -> list[SearchHit]:
         def _search() -> list[SearchHit]:
-            prefilter = couchbase_search.MatchQuery(namespace, field=namespace_field)
+            # A term query matches the namespace exactly. A match query would analyze it, so with the standard
+            # analyzer `tenant-a` would also match `tenant-b`. The namespace field must use the keyword analyzer.
+            prefilter = couchbase_search.TermQuery(namespace, field=namespace_field)
             vector_query = VectorQuery.create(
                 vector_field,
                 query_vector,

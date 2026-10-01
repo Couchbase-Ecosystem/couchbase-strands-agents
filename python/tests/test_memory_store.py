@@ -307,3 +307,43 @@ async def test_sdk_backend_exists_reports_key_presence() -> None:
     assert await backend.exists("memory::default::abc") is False
     await backend.insert_if_absent("memory::default::abc", cast(MemoryDocument, {"content": "first"}))
     assert await backend.exists("memory::default::abc") is True
+
+
+@pytest.mark.asyncio
+async def test_sdk_backend_search_prefilters_hyphenated_namespace_with_term_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import strands_couchbase_memory.memory_store as memory_store
+
+    vector_queries: list[Any] = []
+    create = memory_store.VectorQuery.create
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        vector_queries.append(create(*args, **kwargs))
+        return vector_queries[-1]
+
+    monkeypatch.setattr(memory_store.VectorQuery, "create", capture)
+
+    class FakeScope:
+        def search(self, *args: Any) -> Any:
+            return SimpleNamespace(rows=lambda: [])
+
+    backend = make_sdk_backend(FakeCollection())
+    backend._scope = cast(Any, FakeScope())
+
+    await backend.vector_search(
+        search_index_name="search-index",
+        vector_backend="search",
+        distance_metric="L2_SQUARED",
+        vector_field="embedding",
+        query_vector=[1.0, 0.0, 0.0],
+        limit=3,
+        num_candidates=None,
+        namespace="tenant-a",
+        namespace_field="namespace",
+        content_field="content",
+        metadata_field="metadata",
+    )
+
+    # A match query would analyze `tenant-a` into `tenant` + `a` and also match `tenant-b`.
+    assert vector_queries[0].prefilter.encodable == {"field": "namespace", "term": "tenant-a"}
