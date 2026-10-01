@@ -52,7 +52,7 @@ TypeScript:
 
 ```ts
 import { Agent, MemoryManager } from '@strands-agents/sdk'
-import { CouchbaseMemoryStore } from '@couchbase-examples/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
 
 export function buildAgentForUser(userId: string, embeddingProvider: { embed(text: string): Promise<number[]> }) {
   const store = new CouchbaseMemoryStore({

@@ -14,7 +14,7 @@ Releases are published by `.github/workflows/release-typescript.yml` with npm tr
 npm only lets you add a trusted publisher to a package that already exists, so `0.1.0` has to be published by hand:
 
 1. Run the workflow manually with `tag: typescript-v0.1.0` and `dry_run: true`, and check that it passes.
-2. From a clean checkout of the tag, as an `@couchbase-examples` org member with 2FA:
+2. From a clean checkout of the tag, as a member of the `couchbase-ecosystem` npm organization with 2FA:
 
    ```bash
    cd typescript

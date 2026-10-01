@@ -16,7 +16,7 @@ The packages don't create embeddings. You pass an embedding function, so you can
 
 | Language | Package | Start here |
 | --- | --- | --- |
-| TypeScript | `@couchbase-examples/strands-couchbase-memory` | [`typescript/README.md`](typescript/README.md): install, a 10-minute quickstart, configuration and troubleshooting |
+| TypeScript | `@couchbase-ecosystem/strands-couchbase-memory` | [`typescript/README.md`](typescript/README.md): install, a 10-minute quickstart, configuration and troubleshooting |
 | Python | `strands-couchbase-memory` | [`python/README.md`](python/README.md) |
 
 Both need Couchbase Server 8.0 or later (or Capella) with the Data, Query and Index services.

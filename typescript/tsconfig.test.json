@@ -4,7 +4,7 @@
     "rootDir": ".",
     "noEmit": true,
     "paths": {
-      "@couchbase-examples/strands-couchbase-memory": ["./src/index.ts"]
+      "@couchbase-ecosystem/strands-couchbase-memory": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"]

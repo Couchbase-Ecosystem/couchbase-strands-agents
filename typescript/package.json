@@ -1,5 +1,5 @@
 {
-  "name": "@couchbase-examples/strands-couchbase-memory",
+  "name": "@couchbase-ecosystem/strands-couchbase-memory",
   "version": "0.1.0",
   "description": "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents",
   "main": "dist/index.js",
@@ -43,7 +43,7 @@
     "vector-search",
     "memory-store"
   ],
-  "author": "Couchbase Examples <devadvocacy@couchbase.com>",
+  "author": "Couchbase Ecosystem <devadvocacy@couchbase.com>",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
