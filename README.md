@@ -2,7 +2,7 @@
 
 Long-term memory for [Strands Agents](https://strandsagents.com), stored in Couchbase and recalled with vector search. This repository contains a Python and a TypeScript package. Each implements the Strands `MemoryStore` interface on top of Couchbase Hyperscale Vector Search.
 
-The TypeScript package is published to npm as [`@couchbase-ecosystem/strands-couchbase`](https://www.npmjs.com/package/@couchbase-ecosystem/strands-couchbase). The Python package is not on PyPI yet.
+The TypeScript package is published to npm as [`@couchbase-ecosystem/strands-couchbase`](https://www.npmjs.com/package/@couchbase-ecosystem/strands-couchbase), and the Python package to PyPI as [`strands-couchbase`](https://pypi.org/project/strands-couchbase/).
 
 ## What you can use this for
 
@@ -17,9 +17,9 @@ The packages don't create embeddings. You pass an embedding function, so you can
 | Language | Package | Start here |
 | --- | --- | --- |
 | TypeScript | `@couchbase-ecosystem/strands-couchbase` | [`typescript/README.md`](typescript/README.md): install, a 10-minute quickstart, configuration and troubleshooting |
-| Python | `strands-couchbase` | [`python/README.md`](python/README.md) |
+| Python | `strands-couchbase` | [`python/README.md`](python/README.md): install, a 10-minute quickstart, configuration and troubleshooting |
 
-Both need Couchbase Server 8.0 or later (or Capella) with the Data, Query and Index services.
+Both need Couchbase Server 8.0 or later (or Capella) with the Data, Query and Index services. Both packages implement the store's `initialize()`, which Strands `MemoryManager` awaits when an agent starts, so a missing or mismatched vector index or bad credentials fail there with a clear error instead of leaving the agent without memory.
 
 ## Documentation
 
