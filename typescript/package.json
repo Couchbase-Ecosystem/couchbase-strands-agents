@@ -8,7 +8,9 @@
   "type": "module",
   "files": [
     "dist",
+    "src",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "exports": {
@@ -19,6 +21,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src test examples",
@@ -26,7 +29,9 @@
     "format:check": "prettier --check src test examples",
     "type-check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "check": "npm run format:check && npm run lint && npm run type-check && npm run test && npm run build",
-    "example:basic": "tsx examples/basic-memory.ts"
+    "example:basic": "tsx examples/basic-memory.ts",
+    "test:live": "vitest run test/integration-live.test.ts",
+    "smoke:package": "bash scripts/smoke-test-package.sh"
   },
   "keywords": [
     "strands",
@@ -39,15 +44,15 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/couchbase-examples/couchbase-strands-agents.git",
+    "url": "git+https://github.com/Couchbase-Ecosystem/couchbase-strands-agents.git",
     "directory": "typescript"
   },
   "bugs": {
-    "url": "https://github.com/couchbase-examples/couchbase-strands-agents/issues"
+    "url": "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/issues"
   },
-  "homepage": "https://github.com/couchbase-examples/couchbase-strands-agents#readme",
+  "homepage": "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/tree/main/typescript#readme",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "peerDependencies": {
     "@strands-agents/sdk": ">=1.13.0 <2.0.0"

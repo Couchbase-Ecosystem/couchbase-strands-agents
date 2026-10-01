@@ -4,7 +4,7 @@ This tutorial runs the Python and TypeScript packages against the same Couchbase
 
 ## Prerequisites
 
-- Python 3.10+ and Node.js 20+.
+- Python 3.10+ and Node.js 22+.
 - Couchbase Capella or local Couchbase Server with Query and Index enabled.
 - A Hyperscale Vector Index mapping a 3-dimensional vector field named `embedding` for this tutorial's demo embedding provider.
 
