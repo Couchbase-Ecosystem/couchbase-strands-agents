@@ -134,7 +134,7 @@ TypeScript:
 ```bash
 cd typescript
 export COUCHBASE_INTEGRATION_TESTS=1
-npm test -- test/integration-live.test.ts
+npm run test:live
 ```
 
 If live tests fail with no hits after a successful write, first verify the Hyperscale Vector Index exists, its `similarity` matches `COUCHBASE_DISTANCE_METRIC`, its dimension matches your embeddings, and `num_candidates` / `centroidsToProbe` probes enough centroids for the test data.

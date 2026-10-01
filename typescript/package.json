@@ -33,7 +33,7 @@
     "example:setup": "tsx --tsconfig tsconfig.test.json --env-file=.env examples/setup.ts",
     "example:quickstart": "tsx --tsconfig tsconfig.test.json --env-file=.env examples/quickstart.ts",
     "example:smoke": "tsx --tsconfig tsconfig.test.json --env-file=.env examples/smoke-test.ts",
-    "test:live": "vitest run test/integration-live.test.ts",
+    "test:live": "vitest run test/integration-live.test.ts test/initialize-live.test.ts",
     "smoke:package": "bash scripts/smoke-test-package.sh"
   },
   "keywords": [
