@@ -7,7 +7,7 @@ name = "strands-couchbase"
 dynamic = ["version"]
 description = "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 authors = [{name = "Couchbase Ecosystem", email = "devadvocacy@couchbase.com"}]
 keywords = ["strands", "agents", "couchbase", "vector-search", "memory-store"]
@@ -16,14 +16,14 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   "couchbase>=4.6.3,<5.0.0",
-  "strands-agents>=1.57.0",
+  "strands-agents>=1.45.0,<2.0.0",
   "typing-extensions>=4.10.0",
 ]
 
@@ -32,16 +32,6 @@ Homepage = "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents"
 Documentation = "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents#readme"
 Repository = "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents"
 Issues = "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/issues"
-
-[project.optional-dependencies]
-dev = [
-  "build>=1.6.1,<2.0.0",
-  "hatch>=1.18.1,<2.0.0",
-  "mypy>=2.3.1,<3.0.0",
-  "pytest>=9.1.1,<10.0.0",
-  "pytest-asyncio>=1.4.0,<2.0.0",
-  "ruff>=0.16.8,<1.0.0",
-]
 
 [tool.hatch.version]
 source = "vcs"
@@ -82,7 +72,7 @@ include = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

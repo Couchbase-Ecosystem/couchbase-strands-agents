@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -46,3 +46,38 @@ jobs:
       - run: hatch run typecheck
       - run: hatch run test
       - run: hatch run build
+      # Catches packaging mistakes (missing modules, bad metadata) without needing Couchbase.
+      - name: Import the built wheel in a clean venv
+        run: |
+          python -m venv .clean-venv
+          .clean-venv/bin/pip install dist/*.whl
+          cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/python/.clean-venv/bin/python" -c "import strands_couchbase"
+
+  sdk-compat:
+    name: Strands SDK ${{ matrix.sdk-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Lowest and newest versions allowed by the strands-agents range in pyproject.toml.
+        sdk-version: ['1.45.0', 'latest']
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install hatch
+      - name: Install strands-agents ${{ matrix.sdk-version }}
+        run: |
+          if [ "${{ matrix.sdk-version }}" = latest ]; then
+            hatch run python -m pip install --upgrade 'strands-agents<2.0.0'
+          else
+            hatch run python -m pip install 'strands-agents==${{ matrix.sdk-version }}'
+          fi
+      - name: Show the installed SDK version
+        run: hatch run python -c "from importlib.metadata import version; print('strands-agents', version('strands-agents'))"
+      - run: hatch run typecheck
+      - run: hatch run test

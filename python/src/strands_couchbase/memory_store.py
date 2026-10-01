@@ -8,7 +8,7 @@ import inspect
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol, TypedDict, cast
 
 import couchbase.search as couchbase_search
@@ -460,7 +460,7 @@ class CouchbaseMemoryStore(MemoryStore):
         if explicit_id is None and await self._backend.exists(key):
             return key
         vector = await self._embed(content)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         document: MemoryDocument = {
             "content": content,
             "embedding": vector,

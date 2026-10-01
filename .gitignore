@@ -10,6 +10,9 @@ python/build/
 python/dist/
 python/*.egg-info/
 python/src/*.egg-info/
+.venv/
+.python-version
+.clean-venv/
 
 # Node / TypeScript
 typescript/node_modules/
