@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@couchbase-ecosystem/strands-couchbase-memory` are documented here. This project follows [Semantic Versioning](https://semver.org/).
+All notable changes to `@couchbase-ecosystem/strands-couchbase` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 

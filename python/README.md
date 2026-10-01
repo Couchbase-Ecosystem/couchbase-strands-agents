@@ -1,6 +1,6 @@
 # Python Couchbase MemoryStore package
 
-`strands-couchbase-memory` implements the Strands Agents `MemoryStore` protocol with Couchbase Hyperscale Vector Search.
+`strands-couchbase` implements the Strands Agents `MemoryStore` protocol with Couchbase Hyperscale Vector Search.
 
 ## Install for development
 
@@ -13,7 +13,7 @@ python -m pip install -e '.[dev]'
 ```python
 from strands.memory import MemoryManager
 from strands import Agent
-from strands_couchbase_memory import CouchbaseMemoryStore
+from strands_couchbase import CouchbaseMemoryStore
 
 class Embeddings:
     async def embed(self, text: str) -> list[float]:

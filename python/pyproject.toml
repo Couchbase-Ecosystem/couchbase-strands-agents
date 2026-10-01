@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "strands-couchbase-memory"
+name = "strands-couchbase"
 dynamic = ["version"]
 description = "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents"
 readme = "README.md"
@@ -49,10 +49,13 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 root = ".."
 tag_regex = "^python-v(?P<version>.+)$"
+# Only look at python-v* tags. Without this, git describe can return a typescript-v* tag, which tag_regex
+# can't parse, and every Python build fails.
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "python-v*"]
 relative_to = "pyproject.toml"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/strands_couchbase_memory"]
+packages = ["src/strands_couchbase"]
 
 [tool.hatch.envs.default]
 dependencies = [
