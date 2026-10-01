@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.test.json",
+  "include": [".readme-snippets/**/*.ts", "scripts/readme-types/**/*.d.ts"]
+}

@@ -1,47 +1,70 @@
 # Couchbase setup for Strands memory
 
-This guide covers development setup for the Couchbase Hyperscale Vector Search MemoryStore examples.
+This guide gets a Couchbase cluster ready for the memory store: a cluster, a bucket, and a Hyperscale Vector Index.
 
-## Capella
+## Requirements
 
-Use Capella when the Strands application is not running on the same machine as Couchbase or when hosted infrastructure must reach the database.
+- **Couchbase Server 8.0 or later**, or a Capella cluster on 8.0 or later. Hyperscale Vector Indexes were added in 8.0; on 7.x, `CREATE VECTOR INDEX` fails.
+- The **Data**, **Query** and **Index** services. Add **Search** only if you use `COUCHBASE_VECTOR_BACKEND=search`.
+- A bucket, `strands_memory` by default. The `_default` scope and collection are fine.
 
-1. Create or choose a Capella cluster with the Index and Query services enabled.
-2. Allow the application IP address in the Capella networking settings.
-3. Create a database credential with access to the target bucket/scope/collection and Hyperscale Vector Index.
-4. Create a bucket such as `strands_memory`.
-5. Create a scope and collection, or use `_default._default`.
-6. Create a Hyperscale Vector Index with a vector field matching your embedding dimensions.
-7. Set env vars from `.env.example` in the Python or TypeScript package.
+Use a local Docker container for development and tests. Use Capella when the application runs somewhere else, for example on a hosted service that can't reach your laptop.
 
-## Local Couchbase Server
+## Local Couchbase Server with Docker
 
-A local Couchbase Server is appropriate for development and gated integration tests.
+1. Start Couchbase Server 8:
+
+   ```bash
+   docker run -d --name couchbase-strands \
+     -p 8091-8097:8091-8097 -p 11210:11210 \
+     couchbase:enterprise-8.0.3
+   ```
+
+2. Open http://localhost:8091 (it takes about 20 seconds to start) and click **Setup New Cluster**.
+3. Enter a cluster name, the admin username `Administrator` and a password, then click **Next: Accept Terms**.
+4. Accept the terms and click **Configure Disk, Memory, Services**.
+5. Make sure **Data**, **Query** and **Index** are checked. On a small machine, lower the Data quota to about 1024 MiB. Click **Save & Finish**.
+6. Open **Buckets**, click **ADD BUCKET**, enter the name `strands_memory`, and click **Add Bucket**.
+
+The same steps from the command line, once the container is running:
 
 ```bash
-docker run -d --name couchbase-strands \
-  -p 8091-8097:8091-8097 -p 11210:11210 \
-  couchbase:latest
+until curl -sf -o /dev/null http://localhost:8091/ui/index.html; do sleep 2; done
+docker exec couchbase-strands couchbase-cli cluster-init -c localhost \
+  --cluster-username Administrator --cluster-password password \
+  --services data,query,index --cluster-ramsize 1024 --cluster-index-ramsize 512 --index-storage-setting default
+docker exec couchbase-strands couchbase-cli bucket-create -c localhost -u Administrator -p password \
+  --bucket strands_memory --bucket-type couchbase --bucket-ramsize 256 --bucket-replica 0 --wait
 ```
 
-Initialize Couchbase Server in the UI at http://localhost:8091 or with your normal automation. Enable at least Data, Query, Index, and Search services. For small local machines, use a small test bucket with zero replicas.
+Use `couchbase://localhost` as the connection string.
 
-Example environment:
+## Capella free tier
+
+1. Sign up or sign in at https://cloud.couchbase.com.
+2. Click **Create Cluster**, select the project (for example **My First Project**), and under **Cluster Option** select **Free**. Pick a cloud provider and region, and click **Create Cluster**. Deployment takes a few minutes.
+3. When the cluster is healthy, check on its overview page that it runs Couchbase Server 8.0 or later.
+4. Create the bucket: in the cluster, either open **Data Tools** and click **Create** to make a bucket (keep the `_default` scope and collection), or open the **Buckets** tab and click **Create Bucket**. Name it `strands_memory`.
+5. Open the cluster's **Connect** page and follow its steps:
+   - Create cluster access credentials with read and write access to `strands_memory`. These are your `COUCHBASE_USERNAME` and `COUCHBASE_PASSWORD`; they are not your Capella login.
+   - Add your machine's public IP address to the allowed IP addresses. Without it, connections time out.
+   - Copy the public connection string. It starts with `couchbases://`, because Capella requires TLS.
+6. Put the connection string and credentials in `.env`.
+
+## Create the vector index
+
+A Hyperscale Vector Index is trained on vectors that are already in the collection, so it can't be created on an empty one. Creating it too early fails with `ErrTraining: number of centroids required to train the index are not set`.
+
+The TypeScript setup script handles this. It seeds placeholder vectors into a `_seed` namespace, creates the index with `EMBEDDING_DIMENSIONS` and `COUCHBASE_DISTANCE_METRIC` from `.env`, and waits until the index is online. Running it again is safe.
 
 ```bash
-export COUCHBASE_CONNECTION_STRING=couchbase://localhost
-export COUCHBASE_USERNAME=Administrator
-# Replace the asterisks with your local or Capella database password.
-export COUCHBASE_PASSWORD=********
-export COUCHBASE_BUCKET=strands_memory
-export COUCHBASE_SCOPE=_default
-export COUCHBASE_COLLECTION=_default
-export COUCHBASE_VECTOR_BACKEND=hyperscale
-export COUCHBASE_DISTANCE_METRIC=L2_SQUARED
-# Only needed for Search-service vector indexes:
-export COUCHBASE_SEARCH_INDEX=strands-memory-search-index
-export COUCHBASE_NAMESPACE=dev
+cd typescript
+cp .env.example .env   # set the connection, credentials and EMBEDDING_DIMENSIONS
+npm install
+npm run example:setup
 ```
+
+To do it by hand, write at least one document with an `embedding` of the right size, then create the index as shown below.
 
 ## Hyperscale Vector Index requirements
 
@@ -60,11 +83,13 @@ ON `strands_memory`.`_default`.`_default` (`embedding` VECTOR)
 INCLUDE (`content`, `metadata`, `namespace`)
 USING GSI
 WITH {
-  "dimension": 3,
+  "dimension": 1536,
   "similarity": "L2_SQUARED",
   "description": "IVF,SQ8"
 };
 ```
+
+Set `dimension` to your embedding size: 1536 for OpenAI `text-embedding-3-small` (the TypeScript quickstart), 3 for the toy embeddings in the Python example and the live tests.
 
 Hyperscale Vector Indexes are trained on existing vectors, so the collection must already contain at least one document with an `embedding` of the configured dimension before you create the index; on an empty collection `CREATE VECTOR INDEX` fails with `ErrTraining: number of centroids required to train the index are not set`. With `"description": "IVF,SQ8"` Couchbase picks the centroid count from the data. If you pin it (`"IVF<n>,SQ8"`), the collection needs at least `n` documents.
 

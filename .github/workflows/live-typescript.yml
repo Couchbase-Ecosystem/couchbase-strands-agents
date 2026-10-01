@@ -47,6 +47,8 @@ jobs:
       COUCHBASE_COLLECTION: _default
       COUCHBASE_VECTOR_BACKEND: hyperscale
       COUCHBASE_DISTANCE_METRIC: L2_SQUARED
+      # The live tests and examples/smoke-test.ts share the 3-dimension index from the setup script.
+      EMBEDDING_DIMENSIONS: '3'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,8 +59,10 @@ jobs:
       - name: Initialize Couchbase, bucket, seed documents and vector index
         run: bash ../scripts/setup-live-couchbase.sh
       - run: npm ci
+      - name: examples/setup.ts accepts the existing index
+        run: cp .env.example .env && npm run example:setup
       - run: npm run test:live
-      - name: Run the quickstart from the packed tarball
+      - name: Run examples/smoke-test.ts from the packed tarball
         run: npm run smoke:package
         env:
-          COUCHBASE_NAMESPACE: quickstart-${{ github.run_id }}
+          COUCHBASE_NAMESPACE: smoke-${{ github.run_id }}
