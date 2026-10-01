@@ -16,6 +16,7 @@ typescript/node_modules/
 typescript/dist/
 typescript/coverage/
 typescript/*.tgz
+typescript/.readme-snippets/
 
 # Local configuration
 .env

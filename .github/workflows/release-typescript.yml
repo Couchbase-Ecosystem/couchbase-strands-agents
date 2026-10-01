@@ -47,6 +47,8 @@ jobs:
       COUCHBASE_PASSWORD: password
       COUCHBASE_BUCKET: strands_memory
       COUCHBASE_DISTANCE_METRIC: L2_SQUARED
+      # examples/smoke-test.ts must match the 3-dimension index from the setup script.
+      EMBEDDING_DIMENSIONS: '3'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,7 +85,7 @@ jobs:
         run: npm run test:live
         env:
           COUCHBASE_INTEGRATION_TESTS: '1'
-      - name: Install the packed tarball in a clean project and run the quickstart
+      - name: Install the packed tarball in a clean project and run examples/smoke-test.ts
         run: npm run smoke:package
         env:
           COUCHBASE_INTEGRATION_TESTS: '1'

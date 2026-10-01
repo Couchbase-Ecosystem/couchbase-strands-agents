@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pack the package, install the tarball into a clean project and use it the way a consumer would:
-# ESM import, TypeScript type resolution, and MemoryManager wiring. With COUCHBASE_INTEGRATION_TESTS=1
-# it also runs examples/basic-memory.ts (the quickstart) against the configured Couchbase cluster.
+# ESM import, TypeScript type resolution, and MemoryManager wiring. The examples are type-checked unchanged
+# against the tarball, since they import the package by name exactly as a user's code would. With
+# COUCHBASE_INTEGRATION_TESTS=1 it also runs examples/smoke-test.ts against the configured Couchbase cluster.
 #
 # Usage: scripts/smoke-test-package.sh [path/to/package.tgz]   (packs the current tree when omitted)
 set -euo pipefail
@@ -29,25 +30,31 @@ mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 npm init -y >/dev/null
 npm pkg set type=module
-npm install --silent --no-audit --no-fund "$TARBALL" '@strands-agents/sdk@>=1.13.0 <2.0.0' typescript@5 @types/node@22
+npm install --silent --no-audit --no-fund "$TARBALL" '@strands-agents/sdk@>=1.13.0 <2.0.0' openai@6 typescript@5 @types/node@22
 
 cat >consumer.ts <<EOF
 import { MemoryManager, ModelExtractor } from '@strands-agents/sdk'
-import { CouchbaseMemoryStore, type CouchbaseBackend } from '${PACKAGE_NAME}'
-
-const backend: CouchbaseBackend = {
-  async upsert() {},
-  async vectorSearch(input) {
-    return [{ id: 'memory-1', content: 'User prefers dark-mode dashboards.', metadata: {}, namespace: input.namespace }]
-  },
-  async close() {},
-}
+import { CouchbaseMemoryStore } from '${PACKAGE_NAME}'
 
 const store = new CouchbaseMemoryStore({
   name: 'couchbase',
   embeddingProvider: () => [0, 1, 0],
   dimensions: 3,
-  backend,
+  // Internal test seam: an in-memory backend, so no cluster is needed.
+  backend: {
+    async initialize() {},
+    async upsert() {},
+    async exists() {
+      return false
+    },
+    async insertIfAbsent() {
+      return true
+    },
+    async vectorSearch(input) {
+      return [{ id: 'memory-1', content: 'User prefers dark-mode dashboards.', metadata: {}, namespace: input.namespace }]
+    },
+    async close() {},
+  },
   extraction: true,
 })
 const manager = new MemoryManager({ stores: [store] })
@@ -60,8 +67,10 @@ if (!key || hit?.content !== 'User prefers dark-mode dashboards.') throw new Err
 console.log('[smoke] consumer import, types and MemoryManager wiring OK')
 EOF
 
-npx tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck consumer.ts
-echo "[smoke] TypeScript types resolve from the tarball"
+cp "$PACKAGE_DIR"/examples/*.ts .
+npx tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck \
+  consumer.ts setup.ts quickstart.ts smoke-test.ts
+echo "[smoke] TypeScript types resolve from the tarball, and the examples type-check against it"
 node --experimental-strip-types --no-warnings consumer.ts
 
 # ESM-only: there is no CommonJS build. Node 22.12+ can still require() it through require(esm).
@@ -71,8 +80,7 @@ if [[ "$(node -p 'process.features.require_module === true')" == "true" ]]; then
 fi
 
 if [[ "${COUCHBASE_INTEGRATION_TESTS:-0}" == "1" ]]; then
-  sed "s#'../src/index.js'#'${PACKAGE_NAME}'#" "$PACKAGE_DIR/examples/basic-memory.ts" >quickstart.ts
-  node --experimental-strip-types --no-warnings quickstart.ts | tee quickstart.log
-  grep -q '^hit: ' quickstart.log || { echo "[smoke] quickstart returned no hits"; exit 1; }
-  echo "[smoke] quickstart ran against Couchbase from the installed tarball"
+  node --experimental-strip-types --no-warnings smoke-test.ts | tee smoke-test.log
+  grep -q '^hit: ' smoke-test.log || { echo "[smoke] examples/smoke-test.ts returned no hits"; exit 1; }
+  echo "[smoke] examples/smoke-test.ts ran against Couchbase from the installed tarball"
 fi

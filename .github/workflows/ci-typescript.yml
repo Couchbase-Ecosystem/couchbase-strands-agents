@@ -67,6 +67,8 @@ jobs:
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
       - run: npm install --no-save @strands-agents/sdk@${{ matrix.sdk-version }}
-      - run: npm ls @strands-agents/sdk
+      # Not `npm ls`: it reports 1.13.0 as invalid against the devDependency range.
+      - name: Show the installed SDK version
+        run: node -p "'@strands-agents/sdk ' + require('./node_modules/@strands-agents/sdk/package.json').version"
       - run: npm run type-check
       - run: npm test

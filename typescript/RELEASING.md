@@ -6,7 +6,7 @@ Releases are published by `.github/workflows/release-typescript.yml` with npm tr
 
 1. Update `version` in `package.json` (and the lockfile with `npm install --package-lock-only`) and add a section to `CHANGELOG.md`.
 2. Merge to `main`, then tag that commit `typescript-v<version>` and push the tag. The workflow fails if the tag and `package.json` disagree.
-3. Optional dry run first: run the workflow manually with `tag: typescript-v<version>` and `dry_run: true`. It runs every check, the live tests, a clean-project install of the packed tarball with the quickstart, and `npm publish --dry-run`, then stops.
+3. Optional dry run first: run the workflow manually with `tag: typescript-v<version>` and `dry_run: true`. It runs every check, the live tests, a clean-project install of the packed tarball that type-checks the examples and runs `examples/smoke-test.ts`, and `npm publish --dry-run`, then stops.
 4. The tag push runs the same steps and then `npm publish --provenance --access public`.
 
 ## First release only

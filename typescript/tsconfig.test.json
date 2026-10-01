@@ -2,7 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@couchbase-examples/strands-couchbase-memory": ["./src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"]
 }
