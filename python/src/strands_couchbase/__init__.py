@@ -3,6 +3,7 @@
 from .memory_store import (
     CouchbaseMemoryStore,
     CouchbaseMemoryStoreConfig,
+    DistanceMetric,
     EmbeddingProvider,
     MemoryDocument,
 )
@@ -10,6 +11,7 @@ from .memory_store import (
 __all__ = [
     "CouchbaseMemoryStore",
     "CouchbaseMemoryStoreConfig",
+    "DistanceMetric",
     "EmbeddingProvider",
     "MemoryDocument",
 ]

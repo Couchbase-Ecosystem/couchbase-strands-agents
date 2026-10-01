@@ -7,8 +7,27 @@ import pytest
 from couchbase.exceptions import DocumentExistsException
 from strands.memory import MemoryManager, ModelExtractor
 
+import strands_couchbase
 from strands_couchbase import CouchbaseMemoryStore, MemoryDocument
-from strands_couchbase.memory_store import CouchbaseSdkBackend, SearchHit
+from strands_couchbase.memory_store import CouchbaseSdkBackend, IndexValidation, SearchHit
+
+
+@pytest.fixture(autouse=True)
+def clear_couchbase_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A developer's or CI's COUCHBASE_* variables must not change what these tests see.
+    for name in [
+        "COUCHBASE_CONNECTION_STRING",
+        "COUCHBASE_USERNAME",
+        "COUCHBASE_PASSWORD",
+        "COUCHBASE_BUCKET",
+        "COUCHBASE_SCOPE",
+        "COUCHBASE_COLLECTION",
+        "COUCHBASE_SEARCH_INDEX",
+        "COUCHBASE_VECTOR_BACKEND",
+        "COUCHBASE_DISTANCE_METRIC",
+        "COUCHBASE_NAMESPACE",
+    ]:
+        monkeypatch.delenv(name, raising=False)
 
 
 class FakeEmbeddingProvider:
@@ -26,6 +45,10 @@ class FakeBackend:
     def __init__(self) -> None:
         self.documents: dict[str, MemoryDocument] = {}
         self.search_calls: list[dict[str, Any]] = []
+        self.initialize_calls: list[IndexValidation | None] = []
+
+    async def initialize(self, validation: IndexValidation | None = None) -> None:
+        self.initialize_calls.append(validation)
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
         self.documents[key] = document
@@ -338,6 +361,7 @@ async def test_sdk_backend_search_prefilters_hyphenated_namespace_with_term_quer
         vector_field="embedding",
         query_vector=[1.0, 0.0, 0.0],
         limit=3,
+        centroids_to_probe=None,
         num_candidates=None,
         namespace="tenant-a",
         namespace_field="namespace",
@@ -347,3 +371,233 @@ async def test_sdk_backend_search_prefilters_hyphenated_namespace_with_term_quer
 
     # A match query would analyze `tenant-a` into `tenant` + `a` and also match `tenant-b`.
     assert vector_queries[0].prefilter.encodable == {"field": "namespace", "term": "tenant-a"}
+
+
+def test_public_exports_match_the_contract() -> None:
+    assert sorted(strands_couchbase.__all__) == [
+        "CouchbaseMemoryStore",
+        "CouchbaseMemoryStoreConfig",
+        "DistanceMetric",
+        "EmbeddingProvider",
+        "MemoryDocument",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_initialize_validates_the_index_with_the_store_config() -> None:
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        backend=backend,
+        dimensions=3,
+        vector_field="vec",
+        distance_metric="COSINE",
+    )
+
+    await store.initialize()
+
+    assert backend.initialize_calls == [
+        IndexValidation(
+            vector_backend="hyperscale",
+            search_index_name="strands-memory-search-index",
+            vector_field="vec",
+            namespace_field="namespace",
+            distance_metric="COSINE",
+            dimensions=3,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_initialize_only_connects_when_validate_on_initialize_is_false() -> None:
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(
+        name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend, validate_on_initialize=False
+    )
+
+    await store.initialize()
+
+    assert backend.initialize_calls == [None]
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_surfaces_initialize_failures() -> None:
+    class BrokenBackend(FakeBackend):
+        async def initialize(self, validation: IndexValidation | None = None) -> None:
+            raise RuntimeError("No vector index on `embedding`")
+
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=BrokenBackend())
+    manager = MemoryManager(stores=[store])
+
+    with pytest.raises(RuntimeError, match="No vector index"):
+        await manager._init_stores()
+
+
+@pytest.mark.asyncio
+async def test_search_passes_centroids_to_probe_and_num_candidates_separately() -> None:
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        backend=backend,
+        centroids_to_probe=16,
+        num_candidates=40,
+    )
+
+    await store.search("dashboards")
+
+    assert backend.search_calls[0]["centroids_to_probe"] == 16
+    assert backend.search_calls[0]["num_candidates"] == 40
+
+
+@pytest.mark.asyncio
+async def test_search_leaves_centroids_to_probe_and_num_candidates_to_the_backend_defaults() -> None:
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
+
+    await store.search("dashboards")
+
+    assert backend.search_calls[0]["centroids_to_probe"] is None
+    assert backend.search_calls[0]["num_candidates"] is None
+
+
+@pytest.mark.parametrize("name", ["centroids_to_probe", "num_candidates"])
+@pytest.mark.parametrize("value", [0, -1, 1.5, True, "8"])
+def test_rejects_non_positive_integer_options(name: str, value: Any) -> None:
+    config: dict[str, Any] = {name: value}
+    with pytest.raises(ValueError, match=f"{name} must be a positive integer"):
+        CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=FakeBackend(), **config)
+
+
+def test_rejects_an_unknown_distance_metric_in_the_constructor() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"distance_metric must be one of COSINE, DOT, L2, EUCLIDEAN, L2_SQUARED, EUCLIDEAN_SQUARED; "
+        r"got 'HAMMING'",
+    ):
+        CouchbaseMemoryStore(
+            name="cb",
+            embedding_provider=FakeEmbeddingProvider(),
+            backend=FakeBackend(),
+            distance_metric=cast(Any, "HAMMING"),
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("value", "expected"), [("cosine", "COSINE"), (" euclidean_squared ", "EUCLIDEAN_SQUARED")])
+async def test_normalizes_distance_metric(value: str, expected: str) -> None:
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(
+        name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend, distance_metric=cast(Any, value)
+    )
+
+    await store.search("dashboards")
+
+    assert backend.search_calls[0]["distance_metric"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("value", "expected"), [("HYPERSCALE", "hyperscale"), (" Search ", "search")])
+async def test_normalizes_couchbase_vector_backend_env(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: str
+) -> None:
+    monkeypatch.setenv("COUCHBASE_VECTOR_BACKEND", value)
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
+
+    await store.search("dashboards")
+
+    assert backend.search_calls[0]["vector_backend"] == expected
+
+
+def test_rejects_an_unknown_couchbase_vector_backend_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COUCHBASE_VECTOR_BACKEND", "fts")
+    with pytest.raises(ValueError, match="vector_backend must be 'hyperscale' or 'search'; got 'fts'"):
+        CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=FakeBackend())
+
+
+@pytest.mark.asyncio
+async def test_normalizes_couchbase_distance_metric_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COUCHBASE_DISTANCE_METRIC", "cosine")
+    backend = FakeBackend()
+    store = CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=backend)
+
+    await store.search("dashboards")
+
+    assert backend.search_calls[0]["distance_metric"] == "COSINE"
+
+
+def test_rejects_an_unknown_couchbase_distance_metric_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COUCHBASE_DISTANCE_METRIC", "manhattan")
+    with pytest.raises(ValueError, match="distance_metric must be one of"):
+        CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), backend=FakeBackend())
+
+
+@pytest.mark.parametrize(
+    "credentials",
+    [{}, {"username": "app"}, {"password": "secret"}, {"username": "", "password": "secret"}],
+)
+def test_requires_credentials_when_the_store_owns_the_connection(credentials: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="Couchbase credentials are required"):
+        CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), **credentials)
+
+
+def test_treats_empty_credential_env_vars_as_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COUCHBASE_USERNAME", "")
+    monkeypatch.setenv("COUCHBASE_PASSWORD", "")
+    with pytest.raises(ValueError, match="Couchbase credentials are required"):
+        CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider())
+
+
+def test_reads_credentials_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COUCHBASE_USERNAME", "app")
+    monkeypatch.setenv("COUCHBASE_PASSWORD", "secret")
+
+    CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider())
+
+
+def test_does_not_require_credentials_with_a_caller_provided_cluster() -> None:
+    class FakeBucket:
+        def default_scope(self) -> object:
+            return object()
+
+        def default_collection(self) -> object:
+            return object()
+
+    class FakeCluster:
+        def bucket(self, name: str) -> FakeBucket:
+            return FakeBucket()
+
+    CouchbaseMemoryStore(name="cb", embedding_provider=FakeEmbeddingProvider(), cluster=cast(Any, FakeCluster()))
+
+
+@pytest.mark.asyncio
+async def test_constructor_makes_no_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    import strands_couchbase.memory_store as memory_store
+
+    connects: list[Any] = []
+
+    def no_connect(*args: Any, **kwargs: Any) -> Any:
+        connects.append(args)
+        raise AssertionError("Cluster.connect must not run in the constructor")
+
+    def no_socket(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the constructor must not open sockets")
+
+    monkeypatch.setattr(memory_store.Cluster, "connect", no_connect)
+    monkeypatch.setattr(socket, "create_connection", no_socket)
+    monkeypatch.setattr(socket.socket, "connect", no_socket)
+
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        connection_string="couchbase://127.0.0.1:1",
+        username="app",
+        password="secret",
+    )
+    await store.close()
+
+    assert connects == []
