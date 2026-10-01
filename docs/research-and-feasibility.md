@@ -1,6 +1,6 @@
 # Repository Orientation
 
-- Target repo: `couchbase-examples/couchbase-strands-agents`.
+- Target repo: `Couchbase-Ecosystem/couchbase-strands-agents`.
 - Initial state: repository existed but was empty and private.
 - Integration type: Strands Agents `MemoryStore` extension packages backed by Couchbase Hyperscale Vector Search.
 - Ownership strategy: owned Couchbase example/extension repository. The task explicitly requires separate extension packages, not Strands core changes.

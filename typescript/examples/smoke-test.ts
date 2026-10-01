@@ -4,7 +4,7 @@
 //
 // Run: npm run example:setup && npm run example:smoke   (reads .env)
 import { createHash } from 'node:crypto'
-import { CouchbaseMemoryStore } from '@couchbase-examples/strands-couchbase-memory'
+import { CouchbaseMemoryStore } from '@couchbase-ecosystem/strands-couchbase-memory'
 
 // Must match the vector index, so the same setup works for this check and for the quickstart.
 const dimensions = Number(process.env.EMBEDDING_DIMENSIONS ?? 1536)

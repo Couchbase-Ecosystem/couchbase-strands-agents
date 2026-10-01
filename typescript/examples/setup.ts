@@ -8,7 +8,7 @@
 //
 // Run: npm run example:setup   (reads .env; the bucket must already exist)
 import * as couchbase from 'couchbase'
-import { CouchbaseMemoryStore, type DistanceMetric } from '@couchbase-examples/strands-couchbase-memory'
+import { CouchbaseMemoryStore, type DistanceMetric } from '@couchbase-ecosystem/strands-couchbase-memory'
 
 const INDEX_NAME = 'strands-memory-vector-index'
 const SEED_NAMESPACE = '_seed'
