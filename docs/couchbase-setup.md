@@ -29,7 +29,7 @@ Use a local Docker container for development and tests. Use Capella when the app
 The same steps from the command line, once the container is running:
 
 ```bash
-until curl -sf -o /dev/null http://localhost:8091/ui/index.html; do sleep 2; done
+until curl -sf http://localhost:8091/ui/index.html -o /dev/null; do sleep 2; done
 docker exec couchbase-strands couchbase-cli cluster-init -c localhost \
   --cluster-username Administrator --cluster-password password \
   --services data,query,index --cluster-ramsize 1024 --cluster-index-ramsize 512 --index-storage-setting default

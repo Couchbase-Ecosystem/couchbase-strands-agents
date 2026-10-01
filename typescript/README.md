@@ -27,11 +27,12 @@ This takes about 10 minutes and needs Docker, Node.js 22, git and an OpenAI API 
 
 ```bash
 docker run -d --name couchbase-strands -p 8091-8097:8091-8097 -p 11210:11210 couchbase:enterprise-8.0.3
-until curl -sf -o /dev/null http://localhost:8091/ui/index.html; do sleep 2; done
+until curl -sf http://localhost:8091/ui/index.html -o /dev/null; do sleep 2; done
 
 docker exec couchbase-strands couchbase-cli cluster-init -c localhost \
   --cluster-username Administrator --cluster-password password \
   --services data,query,index --cluster-ramsize 1024 --cluster-index-ramsize 512 --index-storage-setting default
+
 docker exec couchbase-strands couchbase-cli bucket-create -c localhost -u Administrator -p password \
   --bucket strands_memory --bucket-type couchbase --bucket-ramsize 256 --bucket-replica 0 --wait
 ```
