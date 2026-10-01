@@ -1,0 +1,85 @@
+name: Draft release - TypeScript
+
+# Keeps a draft GitHub release for the next TypeScript version up to date on every merge to
+# main, so there is always a view of what the next release contains and notes ready to review
+# before anything is published. release-typescript.yml publishes this draft after npm publish.
+#
+# The draft is regenerated on each run, so edits made to it are overwritten by the next merge.
+# Edit it just before tagging (or edit the published release afterwards).
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two runs race to recreate the same draft.
+  group: draft-release-typescript
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  # generate-notes reads pull request metadata.
+  pull-requests: read
+
+jobs:
+  draft:
+    name: Refresh the TypeScript draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the previous typescript-v* tag can be found.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refresh draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          released="$(node -p "require('./typescript/package.json').version")"
+          version="$released"
+          # Between releases package.json still holds the released version, whose tag already
+          # exists. Draft the next patch as a placeholder until the version-bump PR lands; the
+          # draft then takes the real name.
+          if git rev-parse -q --verify "refs/tags/typescript-v$version" >/dev/null; then
+            version="$(node -p "const v = '$version'.split('.'); v[2] = String(Number(v[2]) + 1); v.join('.')")"
+            echo "::notice::typescript-v$released is already tagged; drafting typescript-v$version as a placeholder"
+          fi
+          tag="typescript-v$version"
+
+          state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo none)"
+          if [[ "$state" == "false" ]]; then
+            echo "::notice::$tag is already published; leaving it untouched"
+            exit 0
+          fi
+
+          # Only one untagged TypeScript draft at a time: remove stale ones, such as the
+          # placeholder left behind once the version-bump PR renames the draft. A draft whose
+          # tag has been pushed is waiting to be published, so it is left alone.
+          gh release list --limit 100 --json tagName,isDraft \
+            --jq '.[] | select(.isDraft and (.tagName | startswith("typescript-v"))) | .tagName' |
+            while read -r stale; do
+              if ! git rev-parse -q --verify "refs/tags/$stale" >/dev/null; then
+                gh release delete "$stale" --yes
+              fi
+            done
+
+          scripts/typescript-release-notes.sh "$tag" HEAD > "$RUNNER_TEMP/notes.md"
+
+          # No --target: the draft tracks the default branch. When release-typescript.yml
+          # publishes it the tag already exists, so the release binds to the pushed tag.
+          gh release create "$tag" \
+            --draft \
+            --title "TypeScript v$version" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+          {
+            echo "### Draft release \`$tag\` refreshed"
+            gh release view "$tag" --json url --jq .url
+          } >> "$GITHUB_STEP_SUMMARY"

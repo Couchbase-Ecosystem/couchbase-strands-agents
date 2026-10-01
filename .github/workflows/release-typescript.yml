@@ -67,6 +67,20 @@ jobs:
             echo "::error::Tag '${RELEASE_TAG}' does not match package.json version ${version} (expected typescript-v${version})"
             exit 1
           fi
+      - name: Check the version is not already on npm
+        env:
+          PUBLISH: ${{ github.event_name == 'push' || !inputs.dry_run }}
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          # Publishing is irreversible and npm rejects a repeat, so stop before the long checks.
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            if [[ "$PUBLISH" == "true" ]]; then
+              echo "::error::${name}@${version} is already published; bump the version in package.json"
+              exit 1
+            fi
+            echo "::warning::${name}@${version} is already published; continuing because this is a dry run"
+          fi
       - name: Check npm supports trusted publishing
         run: |
           npm --version
@@ -90,8 +104,61 @@ jobs:
         env:
           COUCHBASE_INTEGRATION_TESTS: '1'
           COUCHBASE_NAMESPACE: release-${{ github.run_id }}
+      - name: Choose the npm dist-tag
+        # A prerelease such as 0.2.0-rc.1 must never become the `latest` that users install.
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$version" == *-* ]]; then echo "NPM_DIST_TAG=next"; else echo "NPM_DIST_TAG=latest"; fi >> "$GITHUB_ENV"
       - name: Publish dry run
-        run: npm publish --dry-run --access public
+        run: npm publish --dry-run --access public --tag "$NPM_DIST_TAG"
       - name: Publish to npm with provenance
         if: ${{ github.event_name == 'push' || !inputs.dry_run }}
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "$NPM_DIST_TAG"
+
+  github-release:
+    name: Publish the GitHub release
+    needs: publish
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Publish the draft, or create the release if there is none
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#typescript-v}"
+          prerelease=()
+          [[ "$version" == *-* ]] && prerelease=(--prerelease)
+
+          # draft-release-typescript.yml keeps a draft for this version up to date on every
+          # merge. Publish that draft rather than regenerating it, so edits made by hand survive.
+          state="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || echo none)"
+          if [[ "$state" == "true" ]]; then
+            echo "Publishing the existing draft for $RELEASE_TAG"
+            gh release edit "$RELEASE_TAG" --draft=false --tag "$RELEASE_TAG" ${prerelease[@]+"${prerelease[@]}"}
+          elif [[ "$state" == "false" ]]; then
+            echo "::notice::$RELEASE_TAG is already published; nothing to do"
+          else
+            echo "No draft found for $RELEASE_TAG; generating notes now"
+            scripts/typescript-release-notes.sh "$RELEASE_TAG" > "$RUNNER_TEMP/notes.md"
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "TypeScript v$version" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              ${prerelease[@]+"${prerelease[@]}"}
+          fi
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

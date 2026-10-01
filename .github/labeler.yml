@@ -1,0 +1,40 @@
+# Path-based half of the PR labelling in .github/workflows/label-pull-requests.yml.
+# The labels are documented in AGENTS.md and grouped into release notes by .github/release.yml.
+#
+# Only rules that are true by construction belong here. A path can prove a PR touched the tests
+# or the TypeScript package; it cannot prove a change to src/ is a feature rather than a fix, so
+# `enhancement` and `bug` come from the conventional-commit title (or a human).
+#
+# Labels are added, never removed (`sync-labels: false`), so a maintainer's correction sticks.
+
+typescript:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'typescript/**'
+          - '.github/workflows/*-typescript.yml'
+          - 'scripts/typescript-release-notes.sh'
+
+python:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'python/**'
+          - '.github/workflows/*-python.yml'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+
+testing:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'typescript/test/**'
+          - 'typescript/vitest.config.ts'
+          - 'typescript/tsconfig.test.json'
+          - 'python/tests/**'
+          - 'scripts/setup-live-couchbase.sh'

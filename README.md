@@ -2,7 +2,7 @@
 
 Long-term memory for [Strands Agents](https://strandsagents.com), stored in Couchbase and recalled with vector search. This repository contains a Python and a TypeScript package. Each implements the Strands `MemoryStore` interface on top of Couchbase Hyperscale Vector Search.
 
-The packages are prepared for publishing as separate Strands extensions, but they are not published to PyPI or npm yet.
+The TypeScript package is published to npm as [`@couchbase-ecosystem/strands-couchbase`](https://www.npmjs.com/package/@couchbase-ecosystem/strands-couchbase). The Python package is not on PyPI yet.
 
 ## What you can use this for
 
@@ -38,7 +38,7 @@ Each package README lists its checks. Repository-wide:
 ./scripts/secret-scan.sh
 ```
 
-Releases are described in [`RELEASING.md`](RELEASING.md).
+Releases are described in [`RELEASING.md`](RELEASING.md). Contributor and agent conventions, including PR labels for release notes, are in [`AGENTS.md`](AGENTS.md).
 
 ## License
 
