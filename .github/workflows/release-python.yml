@@ -10,13 +10,17 @@ on:
         description: 'Existing python-v* tag to publish from; defaults to current ref'
         required: false
         type: string
+      dry_run:
+        description: 'Run every check, but do not publish to PyPI or touch the GitHub release'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: release-python-${{ github.ref }}
+  group: release-python-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -24,23 +28,161 @@ defaults:
     working-directory: python
 
 jobs:
-  publish:
-    name: Build and publish Python package
+  build:
+    name: Check and build Python package
     runs-on: ubuntu-latest
+    services:
+      couchbase:
+        image: couchbase:enterprise-8.0.3
+        ports:
+          - 8091-8097:8091-8097
+          - 11210:11210
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      COUCHBASE_CONNECTION_STRING: couchbase://localhost
+      COUCHBASE_USERNAME: Administrator
+      COUCHBASE_PASSWORD: password
+      COUCHBASE_BUCKET: strands_memory
+      COUCHBASE_SCOPE: _default
+      COUCHBASE_COLLECTION: _default
+      COUCHBASE_VECTOR_BACKEND: hyperscale
+      COUCHBASE_DISTANCE_METRIC: L2_SQUARED
+      # The live tests and examples/smoke_test.py must match the 3-dimension index from the setup script.
+      EMBEDDING_DIMENSIONS: '3'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # hatch-vcs derives the version from the python-v* tag, so it needs the tags and history.
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: python -m pip install --upgrade hatch build twine
+      # Build first, from a clean checkout: anything written to the tree before this would give
+      # hatch-vcs a dirty tree and a +d<date> local version.
+      - run: python -m build
+      - name: Check the built version matches the tag
+        run: |
+          wheels=(dist/*.whl)
+          version="$(python - "${wheels[0]}" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as wheel:
+              name = next(n for n in wheel.namelist() if n.endswith(".dist-info/METADATA"))
+              meta = wheel.read(name).decode()
+          print(next(line.split(":", 1)[1].strip() for line in meta.splitlines() if line.startswith("Version:")))
+          PY
+          )"
+          echo "Built version: ${version}"
+          if [[ "$version" == *.dev* || "$version" == *+* ]]; then
+            echo "::error::Built version ${version} is not a release version. hatch-vcs derives the version from a python-v* tag on the checked-out commit, and '${RELEASE_TAG}' is not one (or the tree was dirty). Run from a python-v<version> tag."
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "python-v${version}" ]]; then
+            echo "::error::Tag '${RELEASE_TAG}' does not match the built version ${version} (expected python-v${version})"
+            exit 1
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+      - name: Check the version is not already on PyPI
+        env:
+          PUBLISH: ${{ github.event_name == 'push' || !inputs.dry_run }}
+        run: |
+          # Publishing is irreversible and PyPI rejects a repeat, so stop before the long checks.
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/strands-couchbase/${VERSION}/json")"
+          case "$status" in
+            404) echo "strands-couchbase ${VERSION} is not on PyPI yet" ;;
+            200)
+              if [[ "$PUBLISH" == "true" ]]; then
+                echo "::error::strands-couchbase ${VERSION} is already on PyPI; tag a new version"
+                exit 1
+              fi
+              echo "::warning::strands-couchbase ${VERSION} is already on PyPI; continuing because this is a dry run" ;;
+            *)
+              echo "::error::Could not check PyPI for strands-couchbase ${VERSION} (HTTP ${status})"
+              exit 1 ;;
+          esac
+      - run: hatch run lint
+      - run: hatch run typecheck
+      - run: hatch run test
+      - run: python -m twine check --strict dist/*
+      - name: Initialize Couchbase for live tests
+        run: bash ../scripts/setup-live-couchbase.sh
+      - name: Live integration tests
+        run: hatch run test -m integration
+        env:
+          COUCHBASE_INTEGRATION_TESTS: '1'
+      - name: Install the built wheel in a clean venv and run examples/smoke_test.py
+        run: bash ../scripts/smoke-test-python-package.sh dist/*.whl
+        env:
+          COUCHBASE_NAMESPACE: release-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: python/dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: pypi
+    permissions:
+      # PyPI trusted publishing (OIDC). Attestations are generated by default.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Publish the GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: python -m pip install --upgrade build hatch twine
-      - run: python -m build
-      - run: python -m twine check dist/*
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: python/dist/
+      - name: Publish the draft, or create the release if there is none
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#python-v}"
+          prerelease=()
+          [[ "$version" =~ (a|b|rc)[0-9]+$ ]] && prerelease=(--prerelease)
+
+          # draft-release-python.yml keeps a draft for this version up to date on every merge.
+          # Publish that draft rather than regenerating it, so edits made by hand survive.
+          state="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || echo none)"
+          if [[ "$state" == "true" ]]; then
+            echo "Publishing the existing draft for $RELEASE_TAG"
+            gh release edit "$RELEASE_TAG" --draft=false --tag "$RELEASE_TAG" ${prerelease[@]+"${prerelease[@]}"}
+          elif [[ "$state" == "false" ]]; then
+            echo "::notice::$RELEASE_TAG is already published; nothing to do"
+          else
+            echo "No draft found for $RELEASE_TAG; generating notes now"
+            scripts/python-release-notes.sh "$RELEASE_TAG" > "$RUNNER_TEMP/notes.md"
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "Python v$version" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              ${prerelease[@]+"${prerelease[@]}"}
+          fi
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

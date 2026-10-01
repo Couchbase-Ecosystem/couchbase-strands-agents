@@ -13,12 +13,13 @@ Published to npm as [`@couchbase-ecosystem/strands-couchbase`](https://www.npmjs
 
 ## Python package
 
-Not on PyPI yet, and release drafting does not cover it yet.
+Published to PyPI as [`strands-couchbase`](https://pypi.org/project/strands-couchbase/) by `.github/workflows/release-python.yml`, using PyPI trusted publishing (OIDC) from the GitHub environment `pypi`, with attestations. No PyPI token is stored in GitHub. Nothing has been published yet: the first release needs the one-time PyPI and GitHub setup first. The full checklist, including that setup, is in [`python/RELEASING.md`](python/RELEASING.md). In short:
 
-1. Configure PyPI trusted publishing for GitHub environment `pypi` and workflow `.github/workflows/release-python.yml`.
-2. Tag a release such as `python-v0.1.0`. The version comes from the tag (`hatch-vcs`).
-3. Pushing the tag runs the release workflow, builds from `python/`, checks the artifacts with Twine, and publishes to PyPI. It does not create a GitHub release.
+1. `draft-release-python.yml` keeps a draft GitHub release for the next Python version up to date on every merge to `main`, named after the newest version in `python/CHANGELOG.md`.
+2. Open a release PR that moves the `Unreleased` entries in `python/CHANGELOG.md` under the new version and dates them. There is no version to bump: `hatch-vcs` takes it from the tag.
+3. After it merges, `git fetch`, then tag that exact commit hash `python-v<version>` and push the tag. The version built at the tag must be exactly `<version>`, or the workflow stops.
+4. The tag push checks the version is not already on PyPI, runs the checks, live tests against Couchbase Server 8, a clean-venv install of the built wheel, `twine check`, publishes to PyPI, and then publishes the draft GitHub release.
 
 ## Manual runs
 
-Both release workflows can be run with `workflow_dispatch` against an existing release tag. The TypeScript workflow defaults to `dry_run: true` when run manually: it runs every check and `npm publish --dry-run`, then stops without publishing or touching the GitHub release.
+Both release workflows can be run with `workflow_dispatch` against an existing release tag, and both default to `dry_run: true` when run manually: they run every check, then stop without publishing or touching the GitHub release. The TypeScript dry run also runs `npm publish --dry-run`. A Python dry run from a branch, or without a tag, stops at the version check, because the build has a development version.
