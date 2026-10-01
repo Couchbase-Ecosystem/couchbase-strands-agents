@@ -4,7 +4,7 @@ All notable changes to `@couchbase-ecosystem/strands-couchbase` are documented h
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.1.0] - 2026-10-01
 
 Initial release.
 
@@ -12,3 +12,6 @@ Initial release.
 - `extraction: true` distills facts with the agent's model through Strands' `ModelExtractor` and stores them via `add`; raw conversation turns are not stored.
 - Namespace isolation, configurable field names, distance metric and centroids-to-probe.
 - ESM-only; requires Node.js 22 or later and `@strands-agents/sdk` `>=1.13.0 <2.0.0`.
+
+[Unreleased]: https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/compare/typescript-v0.1.0...HEAD
+[0.1.0]: https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/releases/tag/typescript-v0.1.0
