@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import inspect
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol, TypedDict, cast
+from typing import Any, Literal, Protocol, TypedDict, cast
 
 import couchbase.search as couchbase_search
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster, QueryScanConsistency
 from couchbase.collection import Collection
-from couchbase.exceptions import DocumentExistsException
+from couchbase.exceptions import (
+    AuthenticationException,
+    BucketNotFoundException,
+    DocumentExistsException,
+    SearchIndexNotFoundException,
+)
 from couchbase.options import ClusterOptions, QueryOptions, SearchOptions
 from couchbase.vector_search import VectorQuery, VectorSearch
 from strands.memory import MemoryEntry, MemoryStore, MemoryStoreConfig
@@ -37,9 +43,16 @@ DEFAULT_METADATA_FIELD = "metadata"
 DEFAULT_NAMESPACE_FIELD = "namespace"
 DEFAULT_NAMESPACE = "default"
 DEFAULT_MAX_RESULTS = 5
+DEFAULT_CENTROIDS_TO_PROBE = 8
+SETUP_DOCS_URL = "https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/blob/main/docs/couchbase-setup.md"
 
 JsonMap = dict[str, Any]
 EmbeddingCallable = Callable[[str], list[float] | Awaitable[list[float]]]
+
+DistanceMetric = Literal["COSINE", "DOT", "L2", "EUCLIDEAN", "L2_SQUARED", "EUCLIDEAN_SQUARED"]
+"""Distance metrics accepted by SQL++ ``APPROX_VECTOR_DISTANCE``. Must match the vector index ``similarity``."""
+
+DISTANCE_METRICS: tuple[DistanceMetric, ...] = ("COSINE", "DOT", "L2", "EUCLIDEAN", "L2_SQUARED", "EUCLIDEAN_SQUARED")
 
 
 class EmbeddingProvider(Protocol):
@@ -66,7 +79,8 @@ class CouchbaseMemoryStoreConfig(MemoryStoreConfig, total=False):
     collection_name: str
     search_index_name: str
     vector_backend: str
-    distance_metric: str
+    distance_metric: DistanceMetric
+    """Must match the Hyperscale index ``similarity``. Only used by the ``hyperscale`` backend."""
     content_field: str
     vector_field: str
     metadata_field: str
@@ -77,7 +91,14 @@ class CouchbaseMemoryStoreConfig(MemoryStoreConfig, total=False):
     cluster: Cluster
     collection: Collection
     backend: CouchbaseBackend
+    """Internal test seam; not part of the public API."""
+    centroids_to_probe: int
+    """Hyperscale only: centroids to probe (``nprobes`` in ``APPROX_VECTOR_DISTANCE``). Default 8."""
     num_candidates: int
+    """Search only: nearest-neighbour candidates for ``VectorQuery``. Default ``3 * limit``."""
+    validate_on_initialize: bool
+    """Check the vector index in ``initialize()``. Default True. Set to False when the credentials can't read
+    ``system:indexes`` (Hyperscale) or the Search index definition; ``initialize()`` still connects."""
 
 
 class MemoryDocument(TypedDict):
@@ -102,8 +123,27 @@ class SearchHit:
     namespace: str | None = None
 
 
+@dataclass(frozen=True)
+class IndexValidation:
+    """What ``initialize()`` checks against the vector index. Internal."""
+
+    vector_backend: str
+    search_index_name: str
+    vector_field: str
+    namespace_field: str
+    distance_metric: DistanceMetric
+    dimensions: int | None = None
+
+
 class CouchbaseBackend(Protocol):
-    """Small backend protocol used by unit tests and the SDK adapter."""
+    """Storage seam used by CouchbaseMemoryStore and swapped for fakes in tests.
+
+    Internal, not part of the public API: it may change in any release.
+    """
+
+    async def initialize(self, validation: IndexValidation | None = None) -> None:
+        """Connect and, when validation is given, check that a matching vector index exists."""
+        ...
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
         """Store or replace a memory document."""
@@ -126,6 +166,7 @@ class CouchbaseBackend(Protocol):
         vector_field: str,
         query_vector: list[float],
         limit: int,
+        centroids_to_probe: int | None,
         num_candidates: int | None,
         namespace: str,
         namespace_field: str,
@@ -141,13 +182,16 @@ class CouchbaseBackend(Protocol):
 
 
 class CouchbaseSdkBackend:
-    """Couchbase Python SDK adapter.
+    """Couchbase Python SDK adapter. Internal, not part of the public API.
 
     The default recall path uses Hyperscale Vector Indexes through SQL++
     `APPROX_VECTOR_DISTANCE`, which is Couchbase's preferred high-performance
     vector-search path. The older Search-service `VectorQuery` API remains
     available by setting `vector_backend="search"` for deployments that still
     use Search Vector Indexes.
+
+    Without a caller-provided cluster, nothing connects in the constructor: the first
+    ``initialize``, ``add``, ``search`` or ``close`` call connects, once.
     """
 
     def __init__(
@@ -162,32 +206,44 @@ class CouchbaseSdkBackend:
         cluster: Cluster | None = None,
         collection: Collection | None = None,
     ) -> None:
-        self._owns_cluster = cluster is None
-        self._cluster = cluster or Cluster.connect(
-            connection_string,
-            ClusterOptions(PasswordAuthenticator(username, password)),
-        )
+        self._connection_string = connection_string
+        self._username = username
+        self._password = password
         self._bucket_name = bucket_name
         self._scope_name = scope_name
         self._collection_name = collection_name
-        self._bucket = self._cluster.bucket(bucket_name)
-        self._scope = self._bucket.scope(scope_name) if scope_name != DEFAULT_SCOPE else self._bucket.default_scope()
-        self._collection = collection or (
-            self._scope.collection(collection_name)
-            if collection_name != DEFAULT_COLLECTION
-            else self._bucket.default_collection()
-        )
+        self._owns_cluster = cluster is None
+        self._configured_collection = collection
+        self._connect_lock = asyncio.Lock()
+        self._cluster: Cluster | None = None
+        self._scope: Any = None
+        self._collection: Any = collection
+        if cluster is not None:
+            self._cluster = cluster
+            self._resolve_bucket_handles(cluster)
+
+    async def initialize(self, validation: IndexValidation | None = None) -> None:
+        await self._get_cluster()
+        if validation is None:
+            return
+        if validation.vector_backend == "search":
+            await self._validate_search_index(validation)
+        else:
+            await self._validate_hyperscale_index(validation)
 
     async def upsert(self, key: str, document: MemoryDocument) -> None:
-        await asyncio.to_thread(self._collection.upsert, key, document)
+        collection = await self._get_collection()
+        await asyncio.to_thread(collection.upsert, key, document)
 
     async def exists(self, key: str) -> bool:
-        result = await asyncio.to_thread(self._collection.exists, key)
+        collection = await self._get_collection()
+        result = await asyncio.to_thread(collection.exists, key)
         return bool(result.exists)
 
     async def insert_if_absent(self, key: str, document: MemoryDocument) -> bool:
+        collection = await self._get_collection()
         try:
-            await asyncio.to_thread(self._collection.insert, key, document)
+            await asyncio.to_thread(collection.insert, key, document)
         except DocumentExistsException:
             return False
         return True
@@ -201,6 +257,7 @@ class CouchbaseSdkBackend:
         vector_field: str,
         query_vector: list[float],
         limit: int,
+        centroids_to_probe: int | None,
         num_candidates: int | None,
         namespace: str,
         namespace_field: str,
@@ -229,9 +286,18 @@ class CouchbaseSdkBackend:
             namespace_field=namespace_field,
             content_field=content_field,
             metadata_field=metadata_field,
-            num_candidates=num_candidates,
+            centroids_to_probe=centroids_to_probe,
             distance_metric=distance_metric,
         )
+
+    async def close(self) -> None:
+        # Holding the lock waits out a connect that is still running, so its cluster gets closed too.
+        async with self._connect_lock:
+            cluster = self._cluster
+        if self._owns_cluster and cluster is not None:
+            close = getattr(cluster, "close", None)
+            if close is not None:
+                await asyncio.to_thread(close)
 
     async def _hyperscale_vector_search(
         self,
@@ -243,9 +309,11 @@ class CouchbaseSdkBackend:
         namespace_field: str,
         content_field: str,
         metadata_field: str,
-        num_candidates: int | None,
+        centroids_to_probe: int | None,
         distance_metric: str,
     ) -> list[SearchHit]:
+        scope = await self._get_scope()
+
         def _search() -> list[SearchHit]:
             collection = _quote_identifier(self._collection_name)
             content_expr = _quote_path(content_field)
@@ -253,7 +321,7 @@ class CouchbaseSdkBackend:
             namespace_expr = _quote_path(namespace_field)
             vector_expr = _quote_path(vector_field)
             distance_metric_literal = _quote_string_literal(_validate_distance_metric(distance_metric))
-            centroids_to_probe = int(num_candidates or 8)
+            nprobes = int(centroids_to_probe or DEFAULT_CENTROIDS_TO_PROBE)
             statement = f"""
                 SELECT META().id AS id,
                        {content_expr} AS content,
@@ -263,14 +331,14 @@ class CouchbaseSdkBackend:
                            {vector_expr},
                            $query_vector,
                            {distance_metric_literal},
-                           {centroids_to_probe}
+                           {nprobes}
                        ) AS distance
                 FROM {collection}
                 WHERE {namespace_expr} = $namespace
                 ORDER BY distance
                 LIMIT {int(limit)}
             """
-            result = self._scope.query(
+            result = scope.query(
                 statement,
                 QueryOptions(
                     named_parameters={
@@ -311,6 +379,8 @@ class CouchbaseSdkBackend:
         content_field: str,
         metadata_field: str,
     ) -> list[SearchHit]:
+        scope = await self._get_scope()
+
         def _search() -> list[SearchHit]:
             # A term query matches the namespace exactly. A match query would analyze it, so with the standard
             # analyzer `tenant-a` would also match `tenant-b`. The namespace field must use the keyword analyzer.
@@ -323,7 +393,7 @@ class CouchbaseSdkBackend:
             )
             vector_search = VectorSearch.from_vector_query(vector_query)
             request = couchbase_search.SearchRequest.create(vector_search)
-            result = self._scope.search(
+            result = scope.search(
                 search_index_name,
                 request,
                 SearchOptions(limit=limit, fields=[content_field, metadata_field, namespace_field]),
@@ -348,11 +418,166 @@ class CouchbaseSdkBackend:
 
         return await asyncio.to_thread(_search)
 
-    async def close(self) -> None:
-        if self._owns_cluster:
-            close = getattr(self._cluster, "close", None)
-            if close is not None:
-                await asyncio.to_thread(close)
+    async def _validate_hyperscale_index(self, validation: IndexValidation) -> None:
+        cluster = await self._get_cluster()
+        keyspace = f"{self._bucket_name}.{self._scope_name}.{self._collection_name}"
+        # Indexes on _default._default are listed with keyspace_id = bucket and no bucket_id.
+        statement = """
+            SELECT i.name, i.index_key, i.`with` AS index_options
+            FROM system:indexes AS i
+            WHERE i.`using` = 'gsi'
+              AND ((i.bucket_id = $bucket AND i.scope_id = $scope AND i.keyspace_id = $collection)
+                OR (i.bucket_id IS MISSING AND i.keyspace_id = $bucket
+                    AND $scope = '_default' AND $collection = '_default'))
+        """
+        parameters = {"bucket": self._bucket_name, "scope": self._scope_name, "collection": self._collection_name}
+        try:
+            rows = await asyncio.to_thread(
+                lambda: list(cluster.query(statement, QueryOptions(named_parameters=parameters)).rows())
+            )
+        except Exception as err:
+            raise RuntimeError(
+                f"Could not read system:indexes to check the vector index for {keyspace}: {err}. "
+                "Set validate_on_initialize=False if these credentials cannot read system:indexes."
+            ) from err
+        vector_key = f"{_quote_path(validation.vector_field)} VECTOR".upper()
+        candidates = [
+            row
+            for row in rows
+            if isinstance(row.get("index_key"), list)
+            and any(isinstance(key, str) and key.upper() == vector_key for key in row["index_key"])
+        ]
+        if not candidates:
+            raise RuntimeError(
+                f"No vector index on `{validation.vector_field}` found for {keyspace} in system:indexes. "
+                f"Create a Hyperscale Vector Index ({SETUP_DOCS_URL}), or set validate_on_initialize=False "
+                "if these credentials cannot read system:indexes."
+            )
+        metric = _canonical_metric(validation.distance_metric)
+        problems: list[str] = []
+        for row in candidates:
+            options = row.get("index_options")
+            if not isinstance(options, dict):
+                options = {}
+            raw_similarity = options.get("similarity")
+            similarity = raw_similarity.upper() if isinstance(raw_similarity, str) else None
+            raw_dimension = options.get("dimension")
+            dimension = raw_dimension if type(raw_dimension) is int else None
+            row_problems: list[str] = []
+            if similarity is not None and _canonical_metric(similarity) != metric:
+                row_problems.append(
+                    f"similarity {similarity} does not match distance_metric {validation.distance_metric}"
+                )
+            if validation.dimensions is not None and dimension is not None and dimension != validation.dimensions:
+                row_problems.append(f"dimension {dimension} does not match dimensions {validation.dimensions}")
+            if not row_problems:
+                return
+            problems.append(f"{row.get('name')}: {'; '.join(row_problems)}")
+        raise RuntimeError(
+            f"No vector index on `{validation.vector_field}` for {keyspace} matches the store config "
+            f"({' | '.join(problems)}). See {SETUP_DOCS_URL}."
+        )
+
+    async def _validate_search_index(self, validation: IndexValidation) -> None:
+        scope = await self._get_scope()
+        name = validation.search_index_name
+        scope_collection = f"{self._scope_name}.{self._collection_name}"
+        try:
+            index = await asyncio.to_thread(lambda: scope.search_indexes().get_index(name))
+        except SearchIndexNotFoundException as err:
+            raise RuntimeError(
+                f"Search index '{name}' not found in {self._bucket_name}.{self._scope_name}. "
+                f"Create it ({SETUP_DOCS_URL}), or set validate_on_initialize=False if these credentials "
+                "cannot read Search index definitions."
+            ) from err
+        except Exception as err:
+            raise RuntimeError(
+                f"Could not read Search index '{name}' in {self._bucket_name}.{self._scope_name}: {err}. "
+                "Set validate_on_initialize=False if these credentials cannot read Search index definitions."
+            ) from err
+        params = getattr(index, "params", None)
+        mapping = params.get("mapping") if isinstance(params, dict) else None
+        if not isinstance(mapping, dict):
+            mapping = {}
+        type_mappings = _search_type_mappings(mapping, scope_collection)
+
+        vector_fields = [
+            field
+            for type_mapping in type_mappings
+            for field in _find_search_fields(type_mapping, validation.vector_field)
+            if field.get("type") in ("vector", "vector_base64")
+        ]
+        if not vector_fields:
+            raise RuntimeError(
+                f"Search index '{name}' has no vector field mapped at '{validation.vector_field}' for "
+                f"{scope_collection}. See {SETUP_DOCS_URL}."
+            )
+        if validation.dimensions is not None and not any(
+            field.get("dims") == validation.dimensions for field in vector_fields
+        ):
+            dims = ", ".join(str(field.get("dims")) for field in vector_fields)
+            raise RuntimeError(
+                f"Search index '{name}' vector field '{validation.vector_field}' has dims {dims}; "
+                f"expected {validation.dimensions}. See {SETUP_DOCS_URL}."
+            )
+
+        # The namespace prefilter is an exact term query, so the field must not be split into words.
+        keyword_mapped = any(
+            (field.get("analyzer") or type_mapping.get("default_analyzer") or mapping.get("default_analyzer"))
+            == "keyword"
+            for type_mapping in type_mappings
+            for field in _find_search_fields(type_mapping, validation.namespace_field)
+            if field.get("type") in (None, "text")
+        )
+        if not keyword_mapped:
+            raise RuntimeError(
+                f"Search index '{name}' must map '{validation.namespace_field}' as a text field with the keyword "
+                f"analyzer so namespaces match exactly. See {SETUP_DOCS_URL}."
+            )
+
+    async def _get_cluster(self) -> Cluster:
+        if self._cluster is not None:
+            return self._cluster
+        async with self._connect_lock:
+            if self._cluster is None:
+                cluster: Cluster | None = None
+                try:
+                    cluster = await asyncio.to_thread(
+                        Cluster.connect,
+                        self._connection_string,
+                        ClusterOptions(PasswordAuthenticator(self._username, self._password)),
+                    )
+                    # The SDK opens the bucket here, so a missing bucket fails now rather than on first use.
+                    self._resolve_bucket_handles(cluster)
+                except BucketNotFoundException as err:
+                    await _close_quietly(cluster)
+                    raise RuntimeError(
+                        f"Bucket '{self._bucket_name}' not found on Couchbase at {self._connection_string}. "
+                        f"Create it or fix bucket_name. See {SETUP_DOCS_URL}."
+                    ) from err
+                except Exception as err:
+                    await _close_quietly(cluster)
+                    raise _connection_error(self._connection_string, self._username, err) from err
+                self._cluster = cluster
+        return self._cluster
+
+    async def _get_scope(self) -> Any:
+        await self._get_cluster()
+        return self._scope
+
+    async def _get_collection(self) -> Any:
+        if self._collection is None:
+            await self._get_cluster()
+        return self._collection
+
+    def _resolve_bucket_handles(self, cluster: Cluster) -> None:
+        bucket = cluster.bucket(self._bucket_name)
+        self._scope = bucket.default_scope() if self._scope_name == DEFAULT_SCOPE else bucket.scope(self._scope_name)
+        self._collection = self._configured_collection or (
+            bucket.default_collection()
+            if self._collection_name == DEFAULT_COLLECTION
+            else self._scope.collection(self._collection_name)
+        )
 
 
 class CouchbaseMemoryStore(MemoryStore):
@@ -382,35 +607,76 @@ class CouchbaseMemoryStore(MemoryStore):
         self.namespace_field = store_config.get("namespace_field", DEFAULT_NAMESPACE_FIELD)
         self.namespace = store_config.get("namespace") or os.getenv("COUCHBASE_NAMESPACE") or DEFAULT_NAMESPACE
         self.vector_backend = (
-            store_config.get("vector_backend") or os.getenv("COUCHBASE_VECTOR_BACKEND") or DEFAULT_VECTOR_BACKEND
-        ).lower()
+            (store_config.get("vector_backend") or os.getenv("COUCHBASE_VECTOR_BACKEND") or DEFAULT_VECTOR_BACKEND)
+            .strip()
+            .lower()
+        )
         if self.vector_backend not in {"hyperscale", "search"}:
-            raise ValueError("vector_backend must be 'hyperscale' or 'search'")
-        self.distance_metric = (
+            raise ValueError(f"vector_backend must be 'hyperscale' or 'search'; got '{self.vector_backend}'")
+        self.distance_metric: DistanceMetric = _validate_distance_metric(
             store_config.get("distance_metric") or os.getenv("COUCHBASE_DISTANCE_METRIC") or DEFAULT_DISTANCE_METRIC
-        ).upper()
+        )
         self.search_index_name = (
             store_config.get("search_index_name") or os.getenv("COUCHBASE_SEARCH_INDEX") or DEFAULT_SEARCH_INDEX
         )
         self.dimensions = store_config.get("dimensions")
-        self.num_candidates = store_config.get("num_candidates")
+        self.centroids_to_probe = _validate_positive_integer(
+            "centroids_to_probe", store_config.get("centroids_to_probe")
+        )
+        self.num_candidates = _validate_positive_integer("num_candidates", store_config.get("num_candidates"))
+        self.validate_on_initialize = store_config.get("validate_on_initialize", True)
         provider = store_config.get("embedding_provider")
         if provider is None:
             raise ValueError("embedding_provider is required")
         self.embedding_provider = provider
         backend = store_config.get("backend")
-        self._backend = backend or CouchbaseSdkBackend(
+        self._backend = backend or self._create_sdk_backend(store_config)
+
+    async def initialize(self) -> None:
+        """Connect to Couchbase and check the vector index.
+
+        Strands ``MemoryManager`` awaits this during agent setup, so a missing index, a config
+        mismatch or bad credentials fail there instead of every search failing later and being
+        swallowed. Call it yourself when using the store without ``MemoryManager``. With
+        ``validate_on_initialize=False`` it only connects.
+        """
+        if not self.validate_on_initialize:
+            await self._backend.initialize()
+            return
+        await self._backend.initialize(
+            IndexValidation(
+                vector_backend=self.vector_backend,
+                search_index_name=self.search_index_name,
+                vector_field=self.vector_field,
+                namespace_field=self.namespace_field,
+                distance_metric=self.distance_metric,
+                dimensions=self.dimensions,
+            )
+        )
+
+    @staticmethod
+    def _create_sdk_backend(store_config: CouchbaseMemoryStoreConfig) -> CouchbaseSdkBackend:
+        username = store_config.get("username") or os.getenv("COUCHBASE_USERNAME") or ""
+        password = store_config.get("password") or os.getenv("COUCHBASE_PASSWORD") or ""
+        cluster = store_config.get("cluster")
+        # With a caller-provided cluster the credentials were already used to connect it.
+        if cluster is None and (not username or not password):
+            raise ValueError(
+                "Couchbase credentials are required: pass username and password, or set COUCHBASE_USERNAME and "
+                "COUCHBASE_PASSWORD, or pass a connected cluster."
+            )
+        return CouchbaseSdkBackend(
             connection_string=store_config.get("connection_string")
             or os.getenv("COUCHBASE_CONNECTION_STRING")
             or DEFAULT_CONNECTION_STRING,
-            username=store_config.get("username") or os.getenv("COUCHBASE_USERNAME") or "",
-            password=store_config.get("password") or os.getenv("COUCHBASE_PASSWORD") or "",
+            username=username,
+            password=password,
             bucket_name=store_config.get("bucket_name") or os.getenv("COUCHBASE_BUCKET") or DEFAULT_BUCKET,
             scope_name=store_config.get("scope_name") or os.getenv("COUCHBASE_SCOPE") or DEFAULT_SCOPE,
             collection_name=store_config.get("collection_name")
             or os.getenv("COUCHBASE_COLLECTION")
             or DEFAULT_COLLECTION,
-            cluster=store_config.get("cluster"),
+            cluster=cluster,
             collection=store_config.get("collection"),
         )
 
@@ -427,6 +693,7 @@ class CouchbaseMemoryStore(MemoryStore):
             vector_field=self.vector_field,
             query_vector=query_vector,
             limit=limit,
+            centroids_to_probe=self.centroids_to_probe,
             num_candidates=self.num_candidates,
             namespace=self.namespace,
             namespace_field=self.namespace_field,
@@ -476,7 +743,12 @@ class CouchbaseMemoryStore(MemoryStore):
         return key
 
     async def close(self) -> None:
-        """Close backend resources."""
+        """Close the Couchbase connection if the store opened it.
+
+        With background extraction (``extraction=True``), call ``await memory_manager.flush()``
+        first: extraction writes still running when the connection closes fail, and Strands only
+        logs ``memory extraction failed``. Closing a store that never connected does nothing.
+        """
         await self._backend.close()
 
     def _content_key(self, content: str) -> str:
@@ -502,12 +774,71 @@ class CouchbaseMemoryStore(MemoryStore):
         return vector
 
 
-def _validate_distance_metric(distance_metric: str) -> str:
-    metric = distance_metric.upper()
-    allowed = {"COSINE", "DOT", "L2", "EUCLIDEAN", "L2_SQUARED", "EUCLIDEAN_SQUARED"}
-    if metric not in allowed:
-        raise ValueError(f"distance_metric must be one of {sorted(allowed)}")
-    return metric
+def _validate_distance_metric(distance_metric: str) -> DistanceMetric:
+    metric = distance_metric.strip().upper()
+    for allowed in DISTANCE_METRICS:
+        if metric == allowed:
+            return allowed
+    raise ValueError(f"distance_metric must be one of {', '.join(DISTANCE_METRICS)}; got '{distance_metric}'")
+
+
+def _canonical_metric(metric: str) -> str:
+    """EUCLIDEAN and L2 are aliases, as are EUCLIDEAN_SQUARED and L2_SQUARED."""
+    upper = metric.upper()
+    return {"EUCLIDEAN": "L2", "EUCLIDEAN_SQUARED": "L2_SQUARED"}.get(upper, upper)
+
+
+def _validate_positive_integer(name: str, value: int | None) -> int | None:
+    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+        raise ValueError(f"{name} must be a positive integer; got {value!r}")
+    return value
+
+
+async def _close_quietly(cluster: Cluster | None) -> None:
+    """Close a cluster this backend opened but will not keep; the original setup error matters more."""
+    if cluster is None:
+        return
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(cluster.close)
+
+
+def _connection_error(connection_string: str, username: str, err: Exception) -> RuntimeError:
+    target = f"Couchbase at {connection_string} as '{username}'"
+    if isinstance(err, AuthenticationException):
+        return RuntimeError(f"Authentication failed connecting to {target}. Check the username and password.")
+    return RuntimeError(f"Could not connect to {target}: {err}. Check the connection string and network access.")
+
+
+def _search_type_mappings(mapping: JsonMap, scope_collection: str) -> list[JsonMap]:
+    """Type mappings that apply to the store's collection (``scope.collection`` or ``scope.collection.<type>``)."""
+    types = mapping.get("types")
+    matches = [
+        type_mapping
+        for name, type_mapping in (types.items() if isinstance(types, dict) else [])
+        if (name == scope_collection or name.startswith(f"{scope_collection}.")) and isinstance(type_mapping, dict)
+    ]
+    default_mapping = mapping.get("default_mapping")
+    if isinstance(default_mapping, dict) and default_mapping.get("enabled") is not False:
+        matches.append(default_mapping)
+    return [type_mapping for type_mapping in matches if type_mapping.get("enabled") is not False]
+
+
+def _find_search_fields(type_mapping: JsonMap, path: str) -> list[JsonMap]:
+    """Field mappings at a dotted path in a Search type mapping."""
+    segments = path.split(".")
+    node: Any = type_mapping
+    for segment in segments:
+        properties = node.get("properties") if isinstance(node, dict) else None
+        node = properties.get(segment) if isinstance(properties, dict) else None
+        if not isinstance(node, dict):
+            return []
+    leaf = segments[-1]
+    fields = node.get("fields")
+    return [
+        field
+        for field in (fields if isinstance(fields, list) else [])
+        if isinstance(field, dict) and field.get("index") is not False and field.get("name") in (None, leaf)
+    ]
 
 
 def _quote_string_literal(value: str) -> str:
