@@ -1,12 +1,13 @@
 """Connectivity check for CouchbaseMemoryStore: no agent, no model and no API key.
 
-Writes one memory into its own namespace, searches for it, deletes the namespace and exits
-non-zero if the search did not return it. The vectors are toys made from a hash of the text,
+Writes one memory into a fresh smoke-<uuid> namespace, searches for it, deletes that one
+document and exits non-zero if the search did not return it. COUCHBASE_NAMESPACE is ignored, so
+running it never touches existing memories. The vectors are toys made from a hash of the text,
 so this proves the round trip works, not that recall is meaningful.
 
-Connection settings come from the COUCHBASE_* environment variables. EMBEDDING_DIMENSIONS
-(default 3) must match the vector index, as created by scripts/setup-live-couchbase.sh or
-examples/setup.py.
+Connection settings come from the COUCHBASE_* environment variables, except COUCHBASE_NAMESPACE.
+EMBEDDING_DIMENSIONS (default 3) must match the vector index, as created by
+scripts/setup-live-couchbase.sh or examples/setup.py.
 
 Run: python examples/smoke_test.py
 """
@@ -20,8 +21,8 @@ import sys
 import uuid
 
 from couchbase.auth import PasswordAuthenticator
-from couchbase.cluster import Cluster, QueryScanConsistency
-from couchbase.options import ClusterOptions, QueryOptions
+from couchbase.cluster import Cluster
+from couchbase.options import ClusterOptions
 
 from strands_couchbase import CouchbaseMemoryStore
 
@@ -38,7 +39,8 @@ async def main() -> int:
     bucket = os.getenv("COUCHBASE_BUCKET", "strands_memory")
     scope = os.getenv("COUCHBASE_SCOPE", "_default")
     collection = os.getenv("COUCHBASE_COLLECTION", "_default")
-    namespace = os.getenv("COUCHBASE_NAMESPACE") or f"smoke-{uuid.uuid4()}"
+    # Never COUCHBASE_NAMESPACE: .env.example sets it to the store's default namespace.
+    namespace = f"smoke-{uuid.uuid4()}"
     cluster = Cluster(
         os.getenv("COUCHBASE_CONNECTION_STRING", "couchbase://localhost"),
         ClusterOptions(
@@ -57,6 +59,7 @@ async def main() -> int:
         embedding_provider=toy_embedding,
         dimensions=DIMENSIONS,
     )
+    key: str | None = None
     try:
         # MemoryManager calls this during agent setup; standalone use calls it directly.
         await store.initialize()
@@ -70,11 +73,12 @@ async def main() -> int:
             return 1
         return 0
     finally:
-        cluster.bucket(bucket).scope(scope).query(
-            f"DELETE FROM `{collection}` WHERE `namespace` = $namespace",
-            QueryOptions(named_parameters={"namespace": namespace}, scan_consistency=QueryScanConsistency.REQUEST_PLUS),
-        ).execute()
-        cluster.close()
+        try:
+            # Remove only the document this run wrote, never a whole namespace.
+            if key is not None:
+                cluster.bucket(bucket).scope(scope).collection(collection).remove(key)
+        finally:
+            cluster.close()
 
 
 if __name__ == "__main__":

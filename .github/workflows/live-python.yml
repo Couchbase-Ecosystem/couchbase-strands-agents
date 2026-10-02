@@ -63,9 +63,7 @@ jobs:
         run: bash ../scripts/setup-live-couchbase.sh
       - run: pip install hatch build
       - name: examples/setup.py accepts the existing index
-        run: cp .env.example .env && hatch run python examples/setup.py
+        run: hatch run python examples/setup.py
       - run: hatch run test -m integration
       - name: Run examples/smoke_test.py from the built wheel
         run: bash ../scripts/smoke-test-python-package.sh
-        env:
-          COUCHBASE_NAMESPACE: smoke-${{ github.run_id }}
