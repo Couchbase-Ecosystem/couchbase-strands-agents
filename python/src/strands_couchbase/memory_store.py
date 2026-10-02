@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import inspect
 import os
@@ -15,7 +16,12 @@ import couchbase.search as couchbase_search
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster, QueryScanConsistency
 from couchbase.collection import Collection
-from couchbase.exceptions import AuthenticationException, DocumentExistsException, SearchIndexNotFoundException
+from couchbase.exceptions import (
+    AuthenticationException,
+    BucketNotFoundException,
+    DocumentExistsException,
+    SearchIndexNotFoundException,
+)
 from couchbase.options import ClusterOptions, QueryOptions, SearchOptions
 from couchbase.vector_search import VectorQuery, VectorSearch
 from strands.memory import MemoryEntry, MemoryStore, MemoryStoreConfig
@@ -534,15 +540,24 @@ class CouchbaseSdkBackend:
             return self._cluster
         async with self._connect_lock:
             if self._cluster is None:
+                cluster: Cluster | None = None
                 try:
                     cluster = await asyncio.to_thread(
                         Cluster.connect,
                         self._connection_string,
                         ClusterOptions(PasswordAuthenticator(self._username, self._password)),
                     )
+                    # The SDK opens the bucket here, so a missing bucket fails now rather than on first use.
+                    self._resolve_bucket_handles(cluster)
+                except BucketNotFoundException as err:
+                    await _close_quietly(cluster)
+                    raise RuntimeError(
+                        f"Bucket '{self._bucket_name}' not found on Couchbase at {self._connection_string}. "
+                        f"Create it or fix bucket_name. See {SETUP_DOCS_URL}."
+                    ) from err
                 except Exception as err:
+                    await _close_quietly(cluster)
                     raise _connection_error(self._connection_string, self._username, err) from err
-                self._resolve_bucket_handles(cluster)
                 self._cluster = cluster
         return self._cluster
 
@@ -777,6 +792,14 @@ def _validate_positive_integer(name: str, value: int | None) -> int | None:
     if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
         raise ValueError(f"{name} must be a positive integer; got {value!r}")
     return value
+
+
+async def _close_quietly(cluster: Cluster | None) -> None:
+    """Close a cluster this backend opened but will not keep; the original setup error matters more."""
+    if cluster is None:
+        return
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(cluster.close)
 
 
 def _connection_error(connection_string: str, username: str, err: Exception) -> RuntimeError:

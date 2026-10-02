@@ -373,6 +373,70 @@ async def test_sdk_backend_search_prefilters_hyphenated_namespace_with_term_quer
     assert vector_queries[0].prefilter.encodable == {"field": "namespace", "term": "tenant-a"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("centroids_to_probe", "nprobes"), [(16, 16), (None, 8)])
+async def test_sdk_backend_hyperscale_search_passes_centroids_to_probe_as_nprobes(
+    centroids_to_probe: int | None, nprobes: int
+) -> None:
+    statements: list[str] = []
+
+    class FakeScope:
+        def query(self, statement: str, options: Any) -> Any:
+            statements.append(statement)
+            return SimpleNamespace(rows=lambda: [])
+
+    backend = make_sdk_backend(FakeCollection())
+    backend._scope = cast(Any, FakeScope())
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        backend=backend,
+        distance_metric="COSINE",
+        centroids_to_probe=centroids_to_probe,
+    )
+
+    await store.search("dashboards")
+
+    sql = " ".join(statements[0].split())
+    assert f"APPROX_VECTOR_DISTANCE( `embedding`, $query_vector, 'COSINE', {nprobes} )" in sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("num_candidates", "expected"), [(40, 40), (None, 15)])
+async def test_sdk_backend_search_service_passes_num_candidates_to_the_vector_query(
+    monkeypatch: pytest.MonkeyPatch, num_candidates: int | None, expected: int
+) -> None:
+    import strands_couchbase.memory_store as memory_store
+
+    vector_queries: list[Any] = []
+    create = memory_store.VectorQuery.create
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        vector_queries.append(create(*args, **kwargs))
+        return vector_queries[-1]
+
+    monkeypatch.setattr(memory_store.VectorQuery, "create", capture)
+
+    class FakeScope:
+        def search(self, *args: Any) -> Any:
+            return SimpleNamespace(rows=lambda: [])
+
+    backend = make_sdk_backend(FakeCollection())
+    backend._scope = cast(Any, FakeScope())
+    store = CouchbaseMemoryStore(
+        name="cb",
+        embedding_provider=FakeEmbeddingProvider(),
+        backend=backend,
+        vector_backend="search",
+        max_search_results=5,
+        num_candidates=num_candidates,
+    )
+
+    await store.search("dashboards")
+
+    assert vector_queries[0].num_candidates == expected
+
+
 def test_public_exports_match_the_contract() -> None:
     assert sorted(strands_couchbase.__all__) == [
         "CouchbaseMemoryStore",

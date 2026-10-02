@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from couchbase.exceptions import (
     AuthenticationException,
+    BucketNotFoundException,
     SearchIndexNotFoundException,
     UnAmbiguousTimeoutException,
 )
@@ -96,8 +97,11 @@ class FakeCluster:
         self.rows: list[dict[str, Any]] = []
         self.queries: list[tuple[str, Any]] = []
         self.closed = 0
+        self.bucket_error: Exception | None = None
 
     def bucket(self, name: str) -> FakeBucket:
+        if self.bucket_error is not None:
+            raise self.bucket_error
         return FakeBucket(self.scope)
 
     def query(self, statement: str, options: Any) -> Any:
@@ -212,6 +216,23 @@ async def test_reports_network_failures_with_the_connection_string(connect: Fake
     with pytest.raises(RuntimeError, match="Could not connect to Couchbase at couchbase://example.com") as excinfo:
         await backend.initialize()
     assert excinfo.value.__cause__ is error
+
+
+async def test_reports_a_missing_bucket_and_closes_the_cluster_it_opened(connect: FakeConnect) -> None:
+    backend = new_backend()
+    error = BucketNotFoundException("bucket not found")
+    connect.cluster.bucket_error = error
+
+    with pytest.raises(RuntimeError, match="Bucket 'strands_memory' not found") as excinfo:
+        await backend.initialize()
+    assert excinfo.value.__cause__ is error
+    assert "couchbase-setup.md" in str(excinfo.value)
+    assert connect.cluster.closed == 1
+
+    # Nothing is kept from the failed attempt: the next call connects again.
+    connect.cluster.bucket_error = None
+    await backend.initialize()
+    assert len(connect.calls) == 2
 
 
 async def test_only_connects_when_no_validation_is_requested(connect: FakeConnect) -> None:
