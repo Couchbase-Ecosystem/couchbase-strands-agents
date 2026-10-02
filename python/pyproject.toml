@@ -7,7 +7,7 @@ name = "strands-couchbase"
 dynamic = ["version"]
 description = "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Couchbase Ecosystem", email = "devadvocacy@couchbase.com"}]
 keywords = ["strands", "agents", "couchbase", "vector-search", "memory-store"]
@@ -16,6 +16,7 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -72,7 +73,7 @@ include = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
