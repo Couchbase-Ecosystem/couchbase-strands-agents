@@ -1,0 +1,92 @@
+name: Draft release - Python
+
+# Keeps a draft GitHub release for the next Python version up to date on every merge to main,
+# so there is always a view of what the next release contains and notes ready to review before
+# anything is published. release-python.yml publishes this draft after the PyPI upload.
+#
+# The draft is regenerated on each run, so edits made to it are overwritten by the next merge.
+# Edit it just before tagging (or edit the published release afterwards).
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two runs race to recreate the same draft.
+  group: draft-release-python
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  # generate-notes reads pull request metadata.
+  pull-requests: read
+
+jobs:
+  draft:
+    name: Refresh the Python draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the previous python-v* tag can be found.
+          fetch-depth: 0
+      - name: Refresh draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # The Python version comes from the tag (hatch-vcs), so there is no version file to
+          # read. The newest version heading in python/CHANGELOG.md, which the release PR adds or
+          # dates, names the next release instead.
+          released="$(sed -nE 's/^## \[([0-9][^]]*)\].*/\1/p' python/CHANGELOG.md | head -1)"
+          if [[ -z "$released" ]]; then
+            echo "::error::No version heading such as '## [0.1.0]' in python/CHANGELOG.md"
+            exit 1
+          fi
+          version="$released"
+          # Between releases the changelog's newest heading is the released version, whose tag
+          # already exists. Draft the next patch as a placeholder until the release PR lands; the
+          # draft then takes the real name.
+          if git rev-parse -q --verify "refs/tags/python-v$version" >/dev/null; then
+            IFS=. read -r major minor patch <<<"$version"
+            # Drop a pre-release suffix (0.2.0rc1 -> 0.2.0) before bumping.
+            patch="${patch%%[!0-9]*}"
+            version="$major.$minor.$((patch + 1))"
+            echo "::notice::python-v$released is already tagged; drafting python-v$version as a placeholder"
+          fi
+          tag="python-v$version"
+
+          state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo none)"
+          if [[ "$state" == "false" ]]; then
+            echo "::notice::$tag is already published; leaving it untouched"
+            exit 0
+          fi
+
+          # Only one untagged Python draft at a time: remove stale ones, such as the placeholder
+          # left behind once the release PR renames the draft. A draft whose tag has been pushed
+          # is waiting to be published, so it is left alone.
+          gh release list --limit 100 --json tagName,isDraft \
+            --jq '.[] | select(.isDraft and (.tagName | startswith("python-v"))) | .tagName' |
+            while read -r stale; do
+              if ! git rev-parse -q --verify "refs/tags/$stale" >/dev/null; then
+                gh release delete "$stale" --yes
+              fi
+            done
+
+          scripts/python-release-notes.sh "$tag" HEAD > "$RUNNER_TEMP/notes.md"
+
+          # No --target: the draft tracks the default branch. When release-python.yml publishes
+          # it the tag already exists, so the release binds to the pushed tag.
+          gh release create "$tag" \
+            --draft \
+            --title "Python v$version" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+          {
+            echo "### Draft release \`$tag\` refreshed"
+            gh release view "$tag" --json url --jq .url
+          } >> "$GITHUB_STEP_SUMMARY"
