@@ -53,9 +53,9 @@ Hyperscale Vector Indexes are trained on existing vectors, so the collection mus
 
 Use the dimensions and similarity metric of your embedding model/index. The connector default `COUCHBASE_DISTANCE_METRIC=L2_SQUARED` must match the index `similarity` setting for the Query service to select the vector index.
 
-## Tuning `num_candidates` / `centroidsToProbe`
+## Tuning `centroids_to_probe` / `centroidsToProbe`
 
-For the Hyperscale backend, `num_candidates` (Python) and `centroidsToProbe` (TypeScript) are passed as the `nprobes` argument to `APPROX_VECTOR_DISTANCE`. Couchbase docs define this as the number of centroids to probe for matching vectors. If omitted by the function, Couchbase uses the index `scan_nprobes` setting when available; invalid values default to `1`.
+For the Hyperscale backend, `centroids_to_probe` (Python) and `centroidsToProbe` (TypeScript) are passed as the `nprobes` argument to `APPROX_VECTOR_DISTANCE`. Couchbase docs define this as the number of centroids to probe for matching vectors. If omitted by the function, Couchbase uses the index `scan_nprobes` setting when available; invalid values default to `1`.
 
 The connector passes `8` by default because tiny local/dev indexes can otherwise miss a relevant vector when only one centroid is probed. Tune this value for your data, latency, and recall needs.
 
@@ -65,7 +65,7 @@ Python:
 store = CouchbaseMemoryStore(
     name="memories",
     embedding_provider=embeddings,
-    num_candidates=16,
+    centroids_to_probe=16,
 )
 ```
 
@@ -79,7 +79,7 @@ const store = new CouchbaseMemoryStore({
 })
 ```
 
-In TypeScript, `numCandidates` only applies to the Search-service backend, where it sets the `VectorQuery` candidate count (default `3 * limit`).
+`num_candidates` (Python) and `numCandidates` (TypeScript) only apply to the Search-service backend, where they set the `VectorQuery` candidate count (default `3 * limit`).
 
 ## Search-service fallback
 
