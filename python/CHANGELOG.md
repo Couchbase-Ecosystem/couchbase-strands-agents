@@ -14,7 +14,7 @@ Initial release.
 - The constructor validates the config and makes no network calls; the store connects on first use.
 - Namespace isolation, configurable field names, distance metric (`COSINE`, `DOT`, `L2`/`EUCLIDEAN`, `L2_SQUARED`/`EUCLIDEAN_SQUARED`) and centroids-to-probe.
 - Stored documents and keys are compatible with the TypeScript package.
-- Requires Python 3.11 or later and `strands-agents` `>=1.45.0,<2.0.0`.
+- Requires Python 3.10 or later and `strands-agents` `>=1.45.0,<2.0.0`.
 
 [Unreleased]: https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/compare/python-v0.1.0...HEAD
 [0.1.0]: https://github.com/Couchbase-Ecosystem/couchbase-strands-agents/releases/tag/python-v0.1.0
