@@ -5,7 +5,7 @@
 ## Requirements
 
 - **Couchbase Server 8.0 or later**, or **Couchbase Capella** on 8.0 or later, with the Data, Query and Index services. Memories are searched with a Hyperscale Vector Index, which needs 8.0.
-- **Python 3.11 or later.**
+- **Python 3.10 or later.**
 - **`strands-agents` `>=1.45.0,<2.0.0`** and the **`couchbase`** SDK 4.x. Both are installed with this package.
 - **An embedding model.** The store doesn't create embeddings itself. You pass an object or function that turns text into a vector: OpenAI, Amazon Bedrock and a local model are shown [below](#embedding-providers).
 - **A chat model for the agent.** If you don't pass `model`, Strands uses Amazon Bedrock with your AWS credentials. The quickstart uses OpenAI so that one API key covers both models.
@@ -21,7 +21,7 @@ The second line adds the OpenAI model provider (and the `openai` package) that t
 
 ## Quickstart
 
-This takes about 10 minutes and needs Docker, Python 3.11, git and an OpenAI API key. At the end, a brand-new agent answers from facts a previous agent stored.
+This takes about 10 minutes and needs Docker, Python 3.10+, git and an OpenAI API key. At the end, a brand-new agent answers from facts a previous agent stored.
 
 ### 1. Start Couchbase and create a bucket
 

@@ -4,7 +4,7 @@ This tutorial runs the Python and TypeScript quickstarts against the same Couchb
 
 ## Prerequisites
 
-- Python 3.11+ and Node.js 22+.
+- Python 3.10+ and Node.js 22+.
 - Couchbase Server 8.0+ or Capella with Data, Query and Index, and a `strands_memory` bucket. See [`couchbase-setup.md`](couchbase-setup.md).
 - An OpenAI API key. Both quickstarts use it for the chat model and for `text-embedding-3-small` embeddings.
 
