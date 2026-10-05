@@ -13,7 +13,7 @@ Published to npm as [`@couchbase-ecosystem/strands-couchbase`](https://www.npmjs
 
 ## Python package
 
-Published to PyPI as [`strands-couchbase`](https://pypi.org/project/strands-couchbase/) by `.github/workflows/release-python.yml`, using PyPI trusted publishing (OIDC) from the GitHub environment `pypi`, with attestations. No PyPI token is stored in GitHub. Nothing has been published yet: the first release needs the one-time PyPI and GitHub setup first. The full checklist, including that setup, is in [`python/RELEASING.md`](python/RELEASING.md). In short:
+Published to PyPI as [`strands-couchbase`](https://pypi.org/project/strands-couchbase/) by `.github/workflows/release-python.yml`, using PyPI trusted publishing (OIDC) from the GitHub environment `pypi`, with attestations. No PyPI token is stored in GitHub. The full checklist, including the one-time PyPI and GitHub setup, is in [`python/RELEASING.md`](python/RELEASING.md). In short:
 
 1. `draft-release-python.yml` keeps a draft GitHub release for the next Python version up to date on every merge to `main`, named after the newest version in `python/CHANGELOG.md`.
 2. Open a release PR that moves the `Unreleased` entries in `python/CHANGELOG.md` under the new version and dates them. There is no version to bump: `hatch-vcs` takes it from the tag.
