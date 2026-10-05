@@ -7,7 +7,7 @@ Notes for anyone, human or agent, changing this repository. The package READMEs 
 | Path | What it is | Tooling |
 | --- | --- | --- |
 | `typescript/` | `@couchbase-ecosystem/strands-couchbase` on npm | npm with `package-lock.json`, Node.js 22+ |
-| `python/` | `strands-couchbase` (not on PyPI yet) | hatch, version from `python-v*` tags via `hatch-vcs` |
+| `python/` | `strands-couchbase` on PyPI | hatch, version from `python-v*` tags via `hatch-vcs` |
 | `docs/` | Shared setup, tutorial and design docs | |
 | `scripts/` | Live Couchbase setup, secret scan, Python package smoke test, release notes for each package | bash |
 

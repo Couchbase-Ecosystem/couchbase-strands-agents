@@ -4,7 +4,7 @@ All notable changes to `strands-couchbase` are documented here. This project fol
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.1.0] - 2026-10-05
 
 Initial release.
 
