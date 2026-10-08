@@ -1,6 +1,6 @@
 {
   "name": "@couchbase-ecosystem/strands-couchbase",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Couchbase Hyperscale Vector Search MemoryStore extension for Strands Agents",
   "main": "dist/index.js",
   "module": "dist/index.js",
