@@ -43,3 +43,6 @@ Releases are described in [`RELEASING.md`](RELEASING.md). Contributor and agent 
 ## License
 
 Apache-2.0.
+
+## Support
+This project is community-supported
