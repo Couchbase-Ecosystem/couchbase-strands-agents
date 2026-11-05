@@ -4,6 +4,8 @@ All notable changes to `strands-couchbase` are documented here. This project fol
 
 ## [Unreleased]
 
+- The minimum `couchbase` SDK version is now 4.6.4 (was 4.6.3).
+
 ## [0.1.0] - 2026-10-05
 
 Initial release.

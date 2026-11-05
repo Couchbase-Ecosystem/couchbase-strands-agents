@@ -4,6 +4,8 @@ All notable changes to `@couchbase-ecosystem/strands-couchbase` are documented h
 
 ## [Unreleased]
 
+- The `couchbase` dependency range is now `^4.7.2` (was `^4.7.1`).
+
 ## [0.1.1] - 2026-10-07
 
 No changes to the package code or its dependency ranges.

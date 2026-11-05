@@ -51,11 +51,11 @@ jobs:
       # The live tests and examples/smoke_test.py share the 3-dimension index from the setup script.
       EMBEDDING_DIMENSIONS: '3'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # hatch-vcs derives the version from python-v* tags.
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip

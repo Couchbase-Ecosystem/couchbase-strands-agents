@@ -63,7 +63,7 @@ jobs:
       # Path rules live in .github/labeler.yml. Under pull_request_target the action reads that
       # config from the base branch, not from the PR.
       - name: Label by changed paths
-        uses: actions/labeler@v5
+        uses: actions/labeler@v7
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
